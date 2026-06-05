@@ -208,7 +208,19 @@ function leadLabel(lead) {
 }
 
 function statusLabel(status = '') {
-  return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Unknown';
+  const labels = {
+    new: 'New',
+    analyzed: 'Analyzed',
+    message_ready: 'Message Ready',
+    contacted: 'Contacted',
+    follow_up_due: 'Follow-up Due',
+    replied: 'Replied',
+    call_booked: 'Call Booked',
+    won: 'Won',
+    lost: 'Lost',
+    archived: 'Archived',
+  };
+  return labels[status] || status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Unknown';
 }
 
 function bestMessageForLead(user, leadId) {
@@ -404,6 +416,27 @@ function followUps(user) {
   return `Pending follow-ups:\n${leads.map((l) => `- ${l.followUpDate}${l.followUpTime ? ` ${l.followUpTime}` : ''}: ${leadLabel(l)}`).join('\n')}`;
 }
 
+function pipelineLeads(user) {
+  const all = user.leads || [];
+  const active = all.filter((l) => !['won', 'lost', 'archived'].includes(l.status));
+  if (active.length === 0) return 'No leads in pipeline.';
+
+  const columns = ['new', 'analyzed', 'message_ready', 'contacted', 'follow_up_due', 'replied', 'call_booked'];
+  const parts = ['Pipeline overview:'];
+
+  for (const status of columns) {
+    const inStage = active.filter((l) => l.status === status).sort((a, b) => (b.score || 0) - (a.score || 0));
+    if (inStage.length === 0) continue;
+    parts.push(`\n${statusLabel(status)} (${inStage.length}):`);
+    for (const l of inStage.slice(0, 4)) {
+      parts.push(`  ${l.score || '?'}/100 ${leadLabel(l)}${l.followUpDate ? ` 📅${l.followUpDate}` : ''}`);
+    }
+    if (inStage.length > 4) parts.push(`  ... +${inStage.length - 4} more`);
+  }
+
+  return parts.join('\n');
+}
+
 async function generatePostDraft(platform, topic, user) {
   const provider = (process.env.AI_PROVIDER || 'anthropic').toLowerCase();
   const prompt = `Generate a ${platform} content draft for this topic: ${topic}
@@ -551,6 +584,8 @@ export async function handleTelegramCommand(update) {
     } catch (err) {
       await sendTelegram(user, err.message);
     }
+  } else if (command === '/pipeline' || command === '/pipe') {
+    await sendTelegram(user, pipelineLeads(user));
   } else if (command === '/import') {
     const rawText = rest.join(' ');
     if (!rawText) {
