@@ -3,6 +3,7 @@ export interface AIResponseOptions {
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
+  model?: string;
 }
 
 export interface AIProvider {

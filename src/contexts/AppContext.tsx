@@ -1009,6 +1009,7 @@ Return this JSON object:
         systemPrompt: 'You extract structured profile fields from CV text. Do not invent experience, employers, degrees, dates, metrics, or skills.',
         temperature: 0.2,
         maxTokens: 2500,
+        model: 'claude-3-5-haiku-20241022',
       });
 
       let result: CVProfileResult;
@@ -1037,6 +1038,7 @@ Return exactly this JSON object shape:
             systemPrompt: 'You repair malformed extraction output into strict JSON. Do not invent facts.',
             temperature: 0,
             maxTokens: 1800,
+            model: 'claude-3-5-haiku-20241022',
           });
           result = normalizeCVProfileResult(parseJsonObjectResponse(repaired, 'CV profile repair'));
         } catch {
@@ -1151,8 +1153,9 @@ Return exactly this JSON object shape:
         systemPrompt: LEAD_ANALYSIS_SYSTEM_PROMPT,
         temperature: 0.25,
         maxTokens: 6000,
+        model: 'claude-3-5-haiku-20241022',
       });
-
+ 
       const parsed = parseJsonObjectResponse(response, 'bulk import');
       const candidates = Array.isArray(parsed.leads) ? parsed.leads : [];
       if (candidates.length === 0) {
@@ -1632,6 +1635,7 @@ Generate only the message body. Keep it under 200 words.`;
         prompt,
         systemPrompt: MESSAGE_GENERATION_SYSTEM_PROMPT,
         temperature: 0.7,
+        model: 'claude-3-5-haiku-20241022',
       });
 
       const message: Message = {
@@ -1720,6 +1724,7 @@ Make the content ready to copy and post on the selected platform.`;
         prompt,
         systemPrompt: POST_GENERATION_SYSTEM_PROMPT,
         temperature: 0.7,
+        model: 'claude-3-5-haiku-20241022',
       });
 
       return response.trim();

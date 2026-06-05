@@ -4,6 +4,8 @@ const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
 const HIGH_SCORE_DEFAULT = 75;
+const SONNET_MODEL = process.env.ANTHROPIC_MODEL || process.env.VITE_ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929';
+const HAIKU_MODEL = process.env.HAIKU_MODEL || process.env.VITE_HAIKU_MODEL || 'claude-3-5-haiku-20241022';
 export const API_VERSION = 'telegram-link-v2-json-sanitize';
 
 export function databaseConfigured() {
@@ -414,13 +416,13 @@ Make it useful, specific, and ready to post.`;
 
   if (provider === 'groq') return generateGroq(prompt);
   if (provider === 'gemini') return generateGemini(prompt);
-  return generateAnthropic(prompt);
+  return generateAnthropicHaiku(prompt);
 }
 
-async function generateAnthropic(prompt) {
+async function generateAnthropic(prompt, modelName) {
   const apiKey = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('Server AI is not configured. Set ANTHROPIC_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY.');
-  const model = process.env.ANTHROPIC_MODEL || process.env.VITE_ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929';
+  const model = modelName || SONNET_MODEL;
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -438,6 +440,10 @@ async function generateAnthropic(prompt) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error?.message || 'Anthropic generation failed.');
   return data.content?.map((part) => part.text || '').join('\n').trim();
+}
+
+async function generateAnthropicHaiku(prompt) {
+  return generateAnthropic(prompt, HAIKU_MODEL);
 }
 
 async function generateGroq(prompt) {
@@ -603,7 +609,7 @@ Return exactly this JSON:
 
   let parsed;
   try {
-    const response = await generateAnthropic(prompt);
+    const response = await generateAnthropicHaiku(prompt);
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     parsed = JSON.parse(jsonMatch ? jsonMatch[0] : response);
   } catch {

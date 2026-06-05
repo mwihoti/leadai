@@ -27,7 +27,7 @@ export class AnthropicProvider implements AIProvider {
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: this.model,
+        model: options.model || this.model,
         max_tokens: options.maxTokens ?? 4096,
         temperature: options.temperature ?? 0.4,
         system: options.systemPrompt || 'You are a helpful AI assistant.',
