@@ -121,6 +121,21 @@ export async function getUser(userId) {
   return (await loadUserSnapshot(userId)) || defaultUser(userId);
 }
 
+function mergeArraysById(clientItems, serverItems) {
+  const clientArr = Array.isArray(clientItems) ? clientItems : [];
+  const serverArr = Array.isArray(serverItems) ? serverItems : [];
+  const merged = [...serverArr];
+  for (const clientItem of clientArr) {
+    const idx = merged.findIndex((item) => item.id === clientItem.id);
+    if (idx >= 0) {
+      merged[idx] = clientItem;
+    } else {
+      merged.push(clientItem);
+    }
+  }
+  return merged;
+}
+
 export function mergeSnapshot(existing, body) {
   const base = existing || defaultUser(body.userId);
   return {
@@ -130,16 +145,19 @@ export function mergeSnapshot(existing, body) {
     profile: body.profile || base.profile || {},
     email: body.email || base.email,
     name: body.name || base.name,
-    projects: Array.isArray(body.projects) ? body.projects : base.projects || [],
-    interactions: Array.isArray(body.interactions) ? body.interactions : base.interactions || [],
+    projects: mergeArraysById(body.projects, base.projects),
+    interactions: mergeArraysById(body.interactions, base.interactions),
     settings: mergeSettings(body.settings || base.settings),
-    tasks: Array.isArray(body.tasks) ? body.tasks : [],
-    leads: Array.isArray(body.leads) ? body.leads : [],
-    messages: Array.isArray(body.messages) ? body.messages : [],
-    contentReminders: Array.isArray(body.contentReminders) ? body.contentReminders : [],
+    tasks: mergeArraysById(body.tasks, base.tasks),
+    leads: mergeArraysById(body.leads, base.leads),
+    messages: mergeArraysById(body.messages, base.messages),
+    contentReminders: mergeArraysById(body.contentReminders, base.contentReminders),
     telegram: base.telegram || {},
     sent: base.sent || {},
-    commandDoneTaskIds: base.commandDoneTaskIds || [],
+    commandDoneTaskIds: Array.from(new Set([
+      ...(Array.isArray(base.commandDoneTaskIds) ? base.commandDoneTaskIds : []),
+      ...(Array.isArray(body.commandDoneTaskIds) ? body.commandDoneTaskIds : []),
+    ])),
   };
 }
 
@@ -336,6 +354,12 @@ export async function processAllDue() {
 export async function findUserByChat(chatId) {
   const users = await loadAllSnapshots();
   return users.find((user) => String(user.telegram?.chatId) === String(chatId)) || null;
+}
+
+export async function findUserByEmail(email) {
+  if (!email) return null;
+  const users = await loadAllSnapshots();
+  return users.find((user) => user.email?.toLowerCase() === email.toLowerCase()) || null;
 }
 
 export async function findUserByLinkCode(code) {

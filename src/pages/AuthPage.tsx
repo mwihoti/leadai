@@ -14,16 +14,13 @@ export default function AuthPage() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !email.trim()) return;
     setIsLoading(true);
-    // Simulate auth delay
-    setTimeout(() => {
-      login(email.trim(), name.trim());
-      navigate('/dashboard');
-      setIsLoading(false);
-    }, 500);
+    await login(email.trim(), name.trim());
+    navigate('/dashboard');
+    setIsLoading(false);
   }
 
   return (

@@ -239,7 +239,7 @@ export interface ContentReminder {
   title: string;
   content: string;
   scheduledAt: string;
-  status: 'scheduled' | 'sent' | 'cancelled';
+  status: 'draft' | 'scheduled' | 'sent' | 'cancelled';
   sentAt?: string;
   createdAt: string;
 }

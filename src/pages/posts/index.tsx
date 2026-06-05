@@ -69,6 +69,24 @@ export default function PostsPage() {
       humanInsight
     );
     setGeneratedContent(content);
+    if (content) {
+      const platformLabel = PLATFORMS.find((item) => item.value === platform)?.label || platform;
+      const reminderTopic = topic.trim() || sourceLink.trim() || 'Generated content';
+      scheduleContentReminder({
+        platform,
+        platformLabel,
+        postType,
+        format,
+        topic: reminderTopic,
+        tone,
+        sourceLink,
+        sourceContent,
+        humanInsight,
+        title: `${platformLabel}: ${reminderTopic}`,
+        content,
+        scheduledAt: '',
+      }, 'draft', '');
+    }
   }
 
   function handleCopy() {
@@ -100,6 +118,11 @@ export default function PostsPage() {
       setScheduleMessage('Post reminder scheduled for Telegram.');
     }
   }
+
+  const savedDrafts = [...state.contentReminders]
+    .filter((reminder) => reminder.status === 'draft')
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 10);
 
   const upcomingReminders = [...state.contentReminders]
     .filter((reminder) => reminder.status === 'scheduled')
@@ -302,6 +325,39 @@ export default function PostsPage() {
                 <p className="text-sm text-gray-500">
                   {state.aiLoading ? 'Generating your content...' : 'Generated content will appear here'}
                 </p>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h2 className="font-semibold text-gray-900 mb-4">Saved Drafts ({savedDrafts.length})</h2>
+            {savedDrafts.length === 0 ? (
+              <p className="text-sm text-gray-400">No saved drafts. Generated posts are saved automatically.</p>
+            ) : (
+              <div className="space-y-2">
+                {savedDrafts.map((draft) => (
+                  <div key={draft.id} className="flex items-start justify-between gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 truncate">{draft.title}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {new Date(draft.createdAt).toLocaleString()} - {draft.platformLabel} / {draft.format.replace(/_/g, ' ')}
+                      </p>
+                      <button
+                        onClick={() => setGeneratedContent(draft.content)}
+                        className="text-xs text-blue-600 hover:text-blue-700 mt-1"
+                      >
+                        Load content
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => updateContentReminder(draft.id, { status: 'cancelled' })}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 shrink-0"
+                      title="Delete draft"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>

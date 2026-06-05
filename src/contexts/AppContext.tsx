@@ -534,7 +534,7 @@ interface AppContextType {
   state: AppState;
   dispatch: React.Dispatch<Action>;
   // Auth
-  login: (email: string, name: string) => void;
+  login: (email: string, name: string) => Promise<void>;
   logout: () => void;
   // Profile
   saveProfile: (profile: Partial<UserProfile>) => void;
@@ -692,27 +692,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!state.user) return;
 
-    function refreshOnFocus() {
+    function refreshAll() {
       if (document.visibilityState === 'visible') {
         refreshTelegramStatusForUser(state.user!.id);
+        loadRemoteUserData(state.user!.id);
       }
     }
 
-    window.addEventListener('focus', refreshOnFocus);
-    document.addEventListener('visibilitychange', refreshOnFocus);
+    window.addEventListener('focus', refreshAll);
+    document.addEventListener('visibilitychange', refreshAll);
 
     const interval = window.setInterval(() => {
-      if (!state.telegramConnection.connected) {
-        refreshTelegramStatusForUser(state.user!.id);
-      }
-    }, 7000);
+      refreshTelegramStatusForUser(state.user!.id);
+      loadRemoteUserData(state.user!.id);
+    }, 30000);
 
     return () => {
-      window.removeEventListener('focus', refreshOnFocus);
-      document.removeEventListener('visibilitychange', refreshOnFocus);
+      window.removeEventListener('focus', refreshAll);
+      document.removeEventListener('visibilitychange', refreshAll);
       window.clearInterval(interval);
     };
-  }, [state.user, state.telegramConnection.connected]);
+  }, [state.user]);
 
   function loadUserData(userId: string) {
     const profile = getCollection<UserProfile>('profiles').find((p) => p.userId === userId) || null;
@@ -770,22 +770,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Auth
   // ==========================================================
 
-  function login(email: string, name: string) {
+  async function login(email: string, name: string) {
     const existingUser = getStoredUser();
     if (existingUser) {
       dispatch({ type: 'SET_USER', payload: existingUser });
       loadUserData(existingUser.id);
       return;
     }
-    const user = {
-      id: uuidv4(),
-      email,
-      name,
-    };
+    let userId = uuidv4();
+    try {
+      const lookup = await fetch(`/api/app/lookup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      }).then((r) => r.json());
+      if (lookup.ok && lookup.userId) {
+        userId = lookup.userId;
+      }
+    } catch {
+      // Offline — create new user
+    }
+    const user = { id: userId, email, name };
     storeUser(user);
     dispatch({ type: 'SET_USER', payload: user });
-    // Seed default tasks
-    seedDefaultTasks(user.id);
+    loadUserData(user.id);
   }
 
   function logout() {
@@ -828,6 +836,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const task = getCollection<DailyTask>('daily_tasks').find((t) => t.id === taskId && t.status !== 'done');
         if (task) updateTask(taskId, { status: 'done' });
       }
+      await loadRemoteUserData(userId);
     } catch {
       dispatch({
         type: 'SET_TELEGRAM_CONNECTION',
@@ -1722,13 +1731,14 @@ Make the content ready to copy and post on the selected platform.`;
     }
   }
 
-  function scheduleContentReminder(reminderData: Omit<ContentReminder, 'id' | 'userId' | 'createdAt' | 'status'>): ContentReminder | null {
+  function scheduleContentReminder(reminderData: Omit<ContentReminder, 'id' | 'userId' | 'createdAt' | 'status'>, status: ContentReminder['status'] = 'scheduled', scheduledAt?: string): ContentReminder | null {
     if (!state.user) return null;
     const reminder: ContentReminder = {
       ...reminderData,
+      scheduledAt: scheduledAt ?? reminderData.scheduledAt,
       id: uuidv4(),
       userId: state.user.id,
-      status: 'scheduled',
+      status,
       createdAt: new Date().toISOString(),
     };
     const reminders = getCollection<ContentReminder>('content_reminders');
