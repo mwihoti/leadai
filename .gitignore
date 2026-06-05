@@ -24,3 +24,4 @@ data/telegram-store.json
 *.njsproj
 *.sln
 *.sw?
+.vercel

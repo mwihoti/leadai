@@ -184,6 +184,25 @@ function statusLabel(status = '') {
   return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Unknown';
 }
 
+function formatDateTime(date, time) {
+  if (!date) return '';
+  const value = time ? `${date}T${time}` : date;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return time ? `${date} ${time}` : String(date);
+  return parsed.toLocaleString('en-KE', {
+    dateStyle: 'medium',
+    timeStyle: time ? 'short' : undefined,
+  });
+}
+
+function scoreLabel(score) {
+  const value = Number(score || 0);
+  if (value >= 80) return `${value}/100 - strong opportunity`;
+  if (value >= 60) return `${value}/100 - worth reviewing`;
+  if (value > 0) return `${value}/100 - needs careful checking`;
+  return 'Not scored yet';
+}
+
 function bestMessageForLead(user, leadId) {
   return user.messages.find((m) => m.leadId === leadId && m.messageType === 'follow_up')
     || user.messages.find((m) => m.leadId === leadId && m.messageType === 'first_message')
@@ -196,41 +215,82 @@ function activeLead(lead) {
 
 function formatTaskReminder(task) {
   return [
-    `Task reminder: ${task.title}`,
-    task.description ? task.description : '',
-    `Task ID: ${shortId(task.id)}`,
-    'Reply with /done ' + shortId(task.id) + ' when complete.',
+    `Linked Lead AI reminder: ${task.title}`,
+    '',
+    'What this means:',
+    task.description ? task.description : 'This is a pending task in your opportunity pipeline.',
+    '',
+    'What to do next:',
+    task.title.toLowerCase().includes('lead')
+      ? '- Open Linked Lead AI, review your pipeline, and add or update the most relevant opportunities.'
+      : '- Open Linked Lead AI and complete this task while the opportunity is still fresh.',
+    `- When you finish, reply: /done ${shortId(task.id)}`,
+    '',
+    `Task reference: ${shortId(task.id)}`,
   ].filter(Boolean).join('\n');
 }
 
 function formatFollowUpReminder(user, lead) {
   const msg = bestMessageForLead(user, lead.id);
+  const companyRole = [lead.company, lead.role].filter(Boolean).join(' - ');
   return [
-    `Follow up with this lead now: ${leadLabel(lead)}`,
-    lead.role ? `Role: ${lead.role}` : '',
-    `Status: ${statusLabel(lead.status)}`,
-    lead.suggestedPitch ? `Suggested pitch: ${lead.suggestedPitch}` : '',
-    lead.recommendedNextAction ? `Next action: ${lead.recommendedNextAction}` : '',
-    msg?.body ? `\nCopy-ready message:\n${msg.body}` : '',
+    `Follow-up due: ${leadLabel(lead)}`,
+    '',
+    'Opportunity details:',
+    companyRole ? `- Company / role: ${companyRole}` : '',
+    lead.followUpDate ? `- Follow-up date: ${formatDateTime(lead.followUpDate, lead.followUpTime)}` : '',
+    `- Pipeline status: ${statusLabel(lead.status)}`,
+    `- Match score: ${scoreLabel(lead.score)}`,
+    lead.trustLevel ? `- Trust level: ${statusLabel(lead.trustLevel)}` : '',
+    lead.opportunityType ? `- Opportunity type: ${statusLabel(lead.opportunityType)}` : '',
+    '',
+    'Why you are following up:',
+    lead.aiSummary ? `- ${lead.aiSummary}` : '',
+    lead.suggestedPitch ? `- Pitch angle: ${lead.suggestedPitch}` : '',
+    '',
+    'Recommended next step:',
+    lead.recommendedNextAction ? `- ${lead.recommendedNextAction}` : '- Send a short follow-up asking if the role or opportunity is still open.',
+    lead.applyUrl ? `- Application link: ${lead.applyUrl}` : '',
+    msg?.body ? `\nSuggested message to send:\n${msg.body}` : '',
   ].filter(Boolean).join('\n');
 }
 
 function formatPostReminder(reminder) {
   return [
-    `Post reminder: ${reminder.title || reminder.topic || 'Scheduled content'}`,
-    `Platform: ${reminder.platformLabel || reminder.platform}`,
-    reminder.scheduledAt ? `Scheduled: ${new Date(reminder.scheduledAt).toLocaleString()}` : '',
-    reminder.content ? `\nCopy-ready content:\n${reminder.content}` : '',
+    `Content reminder: ${reminder.title || reminder.topic || 'Scheduled content'}`,
+    '',
+    'Post details:',
+    `- Platform: ${reminder.platformLabel || reminder.platform}`,
+    `- Format: ${statusLabel(reminder.format)}`,
+    reminder.scheduledAt ? `- Scheduled time: ${new Date(reminder.scheduledAt).toLocaleString('en-KE')}` : '',
+    reminder.topic ? `- Topic: ${reminder.topic}` : '',
+    reminder.sourceLink ? `- Source link: ${reminder.sourceLink}` : '',
+    '',
+    'What to do next:',
+    '- Review the draft below so it still sounds like you.',
+    '- Add any final personal detail, then publish it on the selected platform.',
+    reminder.content ? `\nCopy-ready draft:\n${reminder.content}` : '',
   ].filter(Boolean).join('\n');
 }
 
 function formatLeadAlert(lead) {
   return [
-    `New high-score lead: ${lead.score}/100`,
-    `${lead.name || 'Unnamed lead'}${lead.company ? ` at ${lead.company}` : ''}`,
-    lead.role ? `Role: ${lead.role}` : '',
-    lead.recommendedNextAction ? `Recommended next action: ${lead.recommendedNextAction}` : '',
-    lead.suggestedPitch ? `Pitch angle: ${lead.suggestedPitch}` : '',
+    `High-priority opportunity found: ${scoreLabel(lead.score)}`,
+    '',
+    'Lead details:',
+    `- Contact/poster: ${lead.name || 'Unnamed lead'}`,
+    lead.company ? `- Company: ${lead.company}` : '',
+    lead.role ? `- Role/opportunity: ${lead.role}` : '',
+    lead.opportunityType ? `- Type: ${statusLabel(lead.opportunityType)}` : '',
+    lead.trustLevel ? `- Trust level: ${statusLabel(lead.trustLevel)}` : '',
+    '',
+    'Why it matters:',
+    lead.aiSummary ? `- ${lead.aiSummary}` : '',
+    lead.suggestedPitch ? `- Message angle: ${lead.suggestedPitch}` : '',
+    '',
+    'Recommended next step:',
+    lead.recommendedNextAction ? `- ${lead.recommendedNextAction}` : '- Review the lead in Linked Lead AI and decide whether to apply, DM, or archive it.',
+    lead.applyUrl ? `- Application link: ${lead.applyUrl}` : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -353,16 +413,26 @@ function todaySummary(user) {
   const today = todayISO();
   const tasks = user.tasks.filter((t) => t.status === 'pending' && t.dueDate <= today);
   const followUps = user.leads.filter((l) => l.followUpDate && l.followUpDate <= today && activeLead(l));
-  const lines = ['Today in Linked Lead AI'];
-  lines.push(tasks.length ? `\nTasks:\n${tasks.map((t) => `- ${shortId(t.id)} ${t.title}`).join('\n')}` : '\nTasks: none due');
-  lines.push(followUps.length ? `\nFollow-ups:\n${followUps.map((l) => `- ${leadLabel(l)} (${statusLabel(l.status)})`).join('\n')}` : '\nFollow-ups: none due');
+  const lines = ['Today in Linked Lead AI', 'Here is what needs attention today.'];
+  lines.push(tasks.length
+    ? `\nTasks to complete:\n${tasks.map((t) => `- ${shortId(t.id)}: ${t.title}${t.description ? `\n  Why: ${t.description}` : ''}\n  Mark done: /done ${shortId(t.id)}`).join('\n')}`
+    : '\nTasks to complete: none due');
+  lines.push(followUps.length
+    ? `\nFollow-ups due:\n${followUps.map((l) => `- ${leadLabel(l)}\n  Company/role: ${[l.company, l.role].filter(Boolean).join(' - ') || 'Not specified'}\n  Score: ${scoreLabel(l.score)}\n  Next: ${l.recommendedNextAction || 'Send a short follow-up message.'}`).join('\n')}`
+    : '\nFollow-ups due: none due');
   return lines.join('\n');
 }
 
 function topLeads(user) {
   const leads = [...user.leads].filter(activeLead).sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 8);
   if (leads.length === 0) return 'No active leads yet.';
-  return `Top active leads:\n${leads.map((l) => `- ${l.score || 0}/100 ${leadLabel(l)}${l.recommendedNextAction ? `\n  Next: ${l.recommendedNextAction}` : ''}`).join('\n')}`;
+  return `Top active opportunities:\n${leads.map((l) => [
+    `- ${leadLabel(l)}`,
+    `  Score: ${scoreLabel(l.score)}`,
+    `  Company/role: ${[l.company, l.role].filter(Boolean).join(' - ') || 'Not specified'}`,
+    l.trustLevel ? `  Trust: ${statusLabel(l.trustLevel)}` : '',
+    `  Next: ${l.recommendedNextAction || 'Review this lead and decide the best outreach step.'}`,
+  ].filter(Boolean).join('\n')).join('\n')}`;
 }
 
 function followUps(user) {
@@ -371,7 +441,12 @@ function followUps(user) {
     .sort((a, b) => String(a.followUpDate).localeCompare(String(b.followUpDate)))
     .slice(0, 12);
   if (leads.length === 0) return 'No pending follow-ups.';
-  return `Pending follow-ups:\n${leads.map((l) => `- ${l.followUpDate}${l.followUpTime ? ` ${l.followUpTime}` : ''}: ${leadLabel(l)}`).join('\n')}`;
+  return `Pending follow-ups:\n${leads.map((l) => [
+    `- ${formatDateTime(l.followUpDate, l.followUpTime)}: ${leadLabel(l)}`,
+    `  Company/role: ${[l.company, l.role].filter(Boolean).join(' - ') || 'Not specified'}`,
+    `  Score: ${scoreLabel(l.score)}`,
+    `  Next: ${l.recommendedNextAction || 'Send a concise follow-up and update the lead status.'}`,
+  ].join('\n')).join('\n')}`;
 }
 
 async function generatePostDraft(platform, topic, user) {
@@ -472,7 +547,25 @@ async function handleCommand(update) {
       connectedAt: new Date().toISOString(),
     };
     await saveStore();
-    await telegram('sendMessage', { chat_id: chatId, text: 'Telegram connected to Linked Lead AI. Try /today, /leads, /followups, /post x your topic, or /done task_id.' });
+    await telegram('sendMessage', {
+      chat_id: chatId,
+      text: [
+        'Telegram is now connected to Linked Lead AI.',
+        '',
+        'What this bot will do:',
+        '- Remind you about leads that need follow-up.',
+        '- Show the company, role, score, and recommended next step.',
+        '- Send scheduled content reminders when it is time to post.',
+        '- Let you mark tasks as complete from Telegram.',
+        '',
+        'Useful commands:',
+        '- /today: show tasks and follow-ups due today.',
+        '- /leads: show your strongest active opportunities.',
+        '- /followups: show upcoming follow-ups with dates and next actions.',
+        '- /post linkedin topic: draft a quick post from Telegram.',
+        '- /done task_id: mark a task complete after you finish it.',
+      ].join('\n'),
+    });
     return;
   }
 
@@ -504,7 +597,15 @@ async function handleCommand(update) {
     const platform = rest.shift() || 'linkedin';
     const topic = rest.join(' ');
     if (!topic) {
-      await sendTelegram(user, 'Usage: /post x topic, /post linkedin topic, /post medium topic');
+      await sendTelegram(user, [
+        'To draft content, send:',
+        '/post linkedin your topic',
+        '',
+        'Examples:',
+        '- /post linkedin lessons from building an AI lead tracker',
+        '- /post x why follow-up timing matters',
+        '- /post medium how I built my CV match workflow',
+      ].join('\n'));
       return;
     }
     await sendTelegram(user, `Generating ${platform} draft...`);
@@ -515,7 +616,15 @@ async function handleCommand(update) {
       await sendTelegram(user, err.message);
     }
   } else {
-    await sendTelegram(user, 'Commands: /link CODE, /today, /leads, /followups, /post x topic, /done task_id');
+    await sendTelegram(user, [
+      'Available commands:',
+      '- /today: tasks and follow-ups due today.',
+      '- /leads: strongest active opportunities.',
+      '- /followups: pending follow-ups with company, role, score, and next step.',
+      '- /post linkedin topic: generate a quick content draft.',
+      '- /done task_id: mark a task complete.',
+      '- /link CODE: connect this Telegram chat to your app account.',
+    ].join('\n'));
   }
 }
 

@@ -233,6 +233,9 @@ export interface ContentReminder {
   format: ContentFormat;
   topic: string;
   tone: string;
+  sourceLink?: string;
+  sourceContent?: string;
+  humanInsight?: string;
   title: string;
   content: string;
   scheduledAt: string;
@@ -301,6 +304,9 @@ export interface AIPostInput {
   topic: string;
   project?: Project;
   tone: string;
+  sourceLink?: string;
+  sourceContent?: string;
+  humanInsight?: string;
   userProfile: UserProfile | null;
 }
 

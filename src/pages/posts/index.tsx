@@ -42,6 +42,9 @@ export default function PostsPage() {
   const [platform, setPlatform] = useState<ContentPlatform>('linkedin');
   const [format, setFormat] = useState<ContentFormat>('short_post');
   const [topic, setTopic] = useState('');
+  const [sourceLink, setSourceLink] = useState('');
+  const [sourceContent, setSourceContent] = useState('');
+  const [humanInsight, setHumanInsight] = useState('');
   const [tone, setTone] = useState('professional');
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
@@ -51,9 +54,20 @@ export default function PostsPage() {
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
-    if (!topic.trim()) return;
+    const hasInput = topic.trim() || sourceLink.trim() || sourceContent.trim() || humanInsight.trim();
+    if (!hasInput) return;
     setScheduleMessage('');
-    const content = await generatePost(postType, topic, tone, selectedProjectId || undefined, platform, format);
+    const content = await generatePost(
+      postType,
+      topic.trim() || 'Create a post from the provided source and personal insight',
+      tone,
+      selectedProjectId || undefined,
+      platform,
+      format,
+      sourceLink,
+      sourceContent,
+      humanInsight
+    );
     setGeneratedContent(content);
   }
 
@@ -67,14 +81,18 @@ export default function PostsPage() {
   function handleSchedule() {
     if (!generatedContent || !scheduledAt) return;
     const platformLabel = PLATFORMS.find((item) => item.value === platform)?.label || platform;
+    const reminderTopic = topic.trim() || sourceLink.trim() || 'Generated content';
     const reminder = scheduleContentReminder({
       platform,
       platformLabel,
       postType,
       format,
-      topic,
+      topic: reminderTopic,
       tone,
-      title: `${platformLabel}: ${topic}`,
+      sourceLink,
+      sourceContent,
+      humanInsight,
+      title: `${platformLabel}: ${reminderTopic}`,
       content: generatedContent,
       scheduledAt: new Date(scheduledAt).toISOString(),
     });
@@ -158,6 +176,42 @@ export default function PostsPage() {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Reference Link</label>
+                <input
+                  type="url"
+                  value={sourceLink}
+                  onChange={(e) => setSourceLink(e.target.value)}
+                  placeholder="Paste the article, job post, project, or announcement link"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Claude will use this as context. Paste the important text below if you want it included.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Source Content</label>
+                <textarea
+                  value={sourceContent}
+                  onChange={(e) => setSourceContent(e.target.value)}
+                  rows={5}
+                  placeholder="Paste the content you want to turn into a post: article notes, job description, project update, announcement, or rough draft."
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-y"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Your Human Insight</label>
+                <textarea
+                  value={humanInsight}
+                  onChange={(e) => setHumanInsight(e.target.value)}
+                  rows={4}
+                  placeholder="Add your opinion, lesson learned, personal experience, hot take, or the angle you want the post to carry."
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-y"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Project</label>
@@ -190,7 +244,7 @@ export default function PostsPage() {
 
               <button
                 type="submit"
-                disabled={!topic.trim() || state.aiLoading}
+                disabled={!(topic.trim() || sourceLink.trim() || sourceContent.trim() || humanInsight.trim()) || state.aiLoading}
                 className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:from-blue-700 hover:to-purple-700 transition-colors disabled:opacity-50"
               >
                 <Sparkles className="w-4 h-4" />

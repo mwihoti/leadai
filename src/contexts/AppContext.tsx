@@ -553,7 +553,17 @@ interface AppContextType {
   // Messages
   generateMessage: (leadId: string, messageType: MessageType, tone: string) => Promise<void>;
   // Posts
-  generatePost: (postType: PostType, topic: string, tone: string, projectId?: string, platform?: ContentPlatform, format?: ContentFormat) => Promise<string>;
+  generatePost: (
+    postType: PostType,
+    topic: string,
+    tone: string,
+    projectId?: string,
+    platform?: ContentPlatform,
+    format?: ContentFormat,
+    sourceLink?: string,
+    sourceContent?: string,
+    humanInsight?: string
+  ) => Promise<string>;
   scheduleContentReminder: (reminder: Omit<ContentReminder, 'id' | 'userId' | 'createdAt' | 'status'>) => ContentReminder | null;
   updateContentReminder: (id: string, updates: Partial<ContentReminder>) => void;
   // Export
@@ -1646,7 +1656,10 @@ Generate only the message body. Keep it under 200 words.`;
     tone: string,
     projectId?: string,
     platform: ContentPlatform = 'linkedin',
-    format: ContentFormat = 'short_post'
+    format: ContentFormat = 'short_post',
+    sourceLink = '',
+    sourceContent = '',
+    humanInsight = ''
   ): Promise<string> {
     dispatch({ type: 'SET_AI_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
@@ -1680,7 +1693,19 @@ Project Description: ${project.description}
 Tech Stack: ${project.techStack.join(', ')}
 Business Value: ${project.businessValue}` : ''}
 
-Use the user's real profile and project details only. Make the content ready to copy and post on the selected platform.`;
+Reference link, if the user provided one: ${sourceLink || 'None provided'}
+
+Pasted source content the user wants to respond to, summarize, or transform:
+${sourceContent || 'None provided'}
+
+User's human insight, opinion, lesson, or personal angle:
+${humanInsight || 'None provided'}
+
+Use the user's real profile and project details only.
+If a link is provided but source content is not pasted, mention the link only as context and do not pretend you opened or read it.
+Use the pasted source content for factual details and use the human insight as the main original angle.
+Make the content clear enough that a new reader understands the situation, the takeaway, and why it matters.
+Make the content ready to copy and post on the selected platform.`;
 
       const response = await generateAIResponse({
         prompt,

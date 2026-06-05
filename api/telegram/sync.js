@@ -2,7 +2,6 @@ import {
   databaseConfigured,
   getUser,
   mergeSnapshot,
-  processDueForUser,
   readJson,
   saveUserSnapshot,
   sendJson,
@@ -16,7 +15,6 @@ export default async function handler(req, res) {
     if (!body.userId) return sendJson(res, 400, { ok: false, error: 'userId is required' });
     const existing = await getUser(body.userId);
     const user = mergeSnapshot(existing, body);
-    await processDueForUser(user);
     const updatedAt = await saveUserSnapshot(user);
     return sendJson(res, 200, {
       ok: true,

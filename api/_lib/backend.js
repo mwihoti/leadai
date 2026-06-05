@@ -394,9 +394,9 @@ Make it useful, specific, and ready to post.`;
 }
 
 async function generateAnthropic(prompt) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('Server AI is not configured. Set ANTHROPIC_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY.');
-  const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929';
+  const model = process.env.ANTHROPIC_MODEL || process.env.VITE_ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929';
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -417,9 +417,9 @@ async function generateAnthropic(prompt) {
 }
 
 async function generateGroq(prompt) {
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY;
   if (!apiKey) throw new Error('Server AI is not configured. Set GROQ_API_KEY.');
-  const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+  const model = process.env.GROQ_MODEL || process.env.VITE_GROQ_MODEL || 'llama-3.3-70b-versatile';
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -431,9 +431,9 @@ async function generateGroq(prompt) {
 }
 
 async function generateGemini(prompt) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   if (!apiKey) throw new Error('Server AI is not configured. Set GEMINI_API_KEY.');
-  const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const model = process.env.GEMINI_MODEL || process.env.VITE_GEMINI_MODEL || 'gemini-1.5-flash';
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -521,7 +521,114 @@ export async function handleTelegramCommand(update) {
     } catch (err) {
       await sendTelegram(user, err.message);
     }
+  } else if (command === '/import') {
+    const rawText = rest.join(' ');
+    if (!rawText) {
+      await sendTelegram(user, 'Send /import followed by the LinkedIn text, job posts, or leads to parse.\n\nExample:\n/import Senior React dev needed at Acme Corp. Remote, $120k. Apply at acme.com/jobs');
+      return;
+    }
+    await sendTelegram(user, 'Parsing leads from your text with AI...');
+    try {
+      const result = await importBulkLeads(user, rawText);
+      await sendTelegram(user, `Imported ${result.count} lead(s).\n\n${result.summary}`);
+      await saveUserSnapshot(user);
+    } catch (err) {
+      await sendTelegram(user, err.message);
+    }
   } else {
-    await sendTelegram(user, 'Commands: /link CODE, /today, /leads, /followups, /post x topic, /done task_id');
+    await sendTelegram(user, 'Commands: /link CODE, /today, /leads, /followups, /post x topic, /done task_id, /import <text>');
   }
+}
+
+async function importBulkLeads(user, rawText) {
+  const prompt = `Extract job, freelance, contract, partnership, recruiting, client, investor, or collaboration opportunities from the text below.
+Ignore generic personal profiles unless they clearly represent a hiring need.
+Return at most 10 leads as a JSON array.
+
+User skills: ${(user.profile?.skills || []).join(', ')}
+User target roles: ${(user.profile?.targetRoles || []).join(', ')}
+User projects: ${(user.projects || []).map((p) => p.name).join(', ')}
+
+Text:
+${rawText}
+
+Return exactly this JSON:
+{
+  "leads": [
+    {
+      "name": "person or company name",
+      "company": "company name",
+      "role": "job title or opportunity",
+      "linkedinUrl": "URL if present",
+      "website": "apply URL if present",
+      "source": "Telegram Import",
+      "leadType": "recruiter | founder | hiring_manager | business_owner | company | agency | unknown",
+      "opportunityType": "job | freelance | contract | partnership | consulting | unknown",
+      "score": 0-100,
+      "aiSummary": "one sentence summary",
+      "painPoint": "what they need",
+      "suggestedPitch": "how to position",
+      "recommendedNextAction": "specific next step",
+      "trustLevel": "legit | needs_verification | suspicious | unknown",
+      "trustScore": 0-100,
+      "redFlags": [],
+      "tags": ["tag"]
+    }
+  ]
+}`;
+
+  let parsed;
+  try {
+    const response = await generateAnthropic(prompt);
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    parsed = JSON.parse(jsonMatch ? jsonMatch[0] : response);
+  } catch {
+    const response = await generateGroq(prompt);
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    parsed = JSON.parse(jsonMatch ? jsonMatch[0] : response);
+  }
+
+  const leads = (parsed?.leads || []).slice(0, 10);
+  if (leads.length === 0) throw new Error('No leads found in the text. Try pasting more detailed job or opportunity information.');
+
+  const now = new Date().toISOString();
+  const imported = [];
+  for (const l of leads) {
+    const lead = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      userId: user.userId,
+      name: l.name || '',
+      company: l.company || '',
+      role: l.role || '',
+      linkedinUrl: l.linkedinUrl || '',
+      website: l.website || '',
+      source: 'Telegram Import',
+      rawText: rawText.slice(0, 1500),
+      leadType: l.leadType || 'unknown',
+      opportunityType: l.opportunityType || 'unknown',
+      score: Math.min(100, Math.max(0, Number(l.score) || 0)),
+      aiSummary: l.aiSummary || '',
+      painPoint: l.painPoint || '',
+      suggestedPitch: l.suggestedPitch || '',
+      bestProjectToMention: l.bestProjectToMention || '',
+      whyProjectMatches: l.whyProjectMatches || '',
+      recommendedNextAction: l.recommendedNextAction || '',
+      trustLevel: l.trustLevel || 'unknown',
+      trustScore: Math.min(100, Math.max(0, Number(l.trustScore) || 0)),
+      redFlags: Array.isArray(l.redFlags) ? l.redFlags : [],
+      tags: Array.from(new Set([...(Array.isArray(l.tags) ? l.tags : []), 'telegram-import'])),
+      status: 'analyzed',
+      followUpDate: '',
+      createdAt: now,
+      updatedAt: now,
+    };
+    imported.push(lead);
+  }
+
+  user.leads = [...(user.leads || []), ...imported];
+  const lines = imported.map((l) => `- ${l.score}/100 ${l.name || l.company}${l.role ? ` (${l.role})` : ''}${l.recommendedNextAction ? `\n  Next: ${l.recommendedNextAction}` : ''}`);
+  return {
+    count: imported.length,
+    summary: lines.join('\n'),
+  };
 }
