@@ -1,11 +1,11 @@
 # Linked Lead AI
 
-Linked Lead AI is a local-first AI CRM for managing job, recruiter, freelance, client, and partnership opportunities. It helps you paste lead content, analyze fit with AI, generate outreach, track follow-ups, schedule reminders, and create platform-specific content.
+Linked Lead AI is a local-first AI CRM for managing opportunities from any source: jobs, recruiters, freelance leads, client inquiries, founder requests, agencies, partnerships, grants, referrals, emails, and community posts. It helps you paste opportunity content, analyze fit with AI, generate outreach, track follow-ups, schedule reminders, and create platform-specific content.
 
 ## Features
 
-- Lead CRM with dashboard, lead list, detail pages, and pipeline stages.
-- AI lead analysis for scoring, trust checks, pitch angles, next actions, and generated messages.
+- Opportunity CRM with dashboard, lead list, detail pages, and pipeline stages.
+- AI opportunity analysis for scoring, trust checks, pitch angles, next actions, and generated messages.
 - CV Coach that compares your saved CV against a role without inventing experience.
 - Project/portfolio storage so AI can suggest the best project to mention.
 - Follow-up tracking with date and time reminders.
@@ -19,6 +19,23 @@ Linked Lead AI is a local-first AI CRM for managing job, recruiter, freelance, c
 - Content Studio for LinkedIn, X/Twitter, Medium, blogs, newsletters, Dev.to, Facebook, and Instagram.
 - Neon snapshot sync through the backend.
 - Browser `localStorage` fallback for local/offline usage.
+
+## Supported Sources and Use Cases
+
+The app is not limited to LinkedIn jobs. You can paste and manage opportunities from:
+
+- LinkedIn jobs, posts, profiles, recruiter messages, and company pages
+- X/Twitter posts and DMs
+- email inquiries
+- WhatsApp, Telegram, Discord, Slack, and community group posts
+- job boards
+- company career pages
+- referral messages
+- freelance/client briefs
+- founder or agency requests
+- partnership, consulting, grant, and collaboration posts
+
+The same CRM flow works for job applications, freelance outreach, sales leads, consulting prospects, partnerships, and content-driven personal branding.
 
 ## Tech Stack
 
@@ -137,7 +154,7 @@ Each user gets one row. The `data` JSONB snapshot contains:
 
 - profile
 - projects
-- leads
+- leads and opportunities from any source
 - generated messages
 - interactions
 - daily tasks

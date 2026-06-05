@@ -574,6 +574,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const backendSyncTimer = useRef<number | null>(null);
 
+  function buildSnapshot() {
+    if (!state.user) return null;
+    return {
+      userId: state.user.id,
+      name: state.user.name,
+      email: state.user.email,
+      profile: state.profile,
+      projects: state.projects,
+      interactions: state.interactions,
+      settings: state.telegramSettings,
+      tasks: state.dailyTasks,
+      leads: state.leads,
+      messages: state.messages,
+      contentReminders: state.contentReminders,
+    };
+  }
+
   // Load all data from localStorage on mount
   useEffect(() => {
     const user = getStoredUser();
@@ -590,19 +607,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       window.clearTimeout(backendSyncTimer.current);
     }
     backendSyncTimer.current = window.setTimeout(() => {
-      const snapshot = {
-        userId: state.user!.id,
-        name: state.user!.name,
-        email: state.user!.email,
-        profile: state.profile,
-        projects: state.projects,
-        interactions: state.interactions,
-        settings: state.telegramSettings,
-        tasks: state.dailyTasks,
-        leads: state.leads,
-        messages: state.messages,
-        contentReminders: state.contentReminders,
-      };
+      const snapshot = buildSnapshot();
+      if (!snapshot) return;
 
       syncAppSnapshot(snapshot)
         .then((result) => {
@@ -662,6 +668,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     state.messages,
     state.contentReminders,
   ]);
+
+  useEffect(() => {
+    if (!state.user) return;
+
+    function refreshOnFocus() {
+      if (document.visibilityState === 'visible') {
+        refreshTelegramStatusForUser(state.user!.id);
+      }
+    }
+
+    window.addEventListener('focus', refreshOnFocus);
+    document.addEventListener('visibilitychange', refreshOnFocus);
+
+    const interval = window.setInterval(() => {
+      if (!state.telegramConnection.connected) {
+        refreshTelegramStatusForUser(state.user!.id);
+      }
+    }, 7000);
+
+    return () => {
+      window.removeEventListener('focus', refreshOnFocus);
+      document.removeEventListener('visibilitychange', refreshOnFocus);
+      window.clearInterval(interval);
+    };
+  }, [state.user, state.telegramConnection.connected]);
 
   function loadUserData(userId: string) {
     const profile = getCollection<UserProfile>('profiles').find((p) => p.userId === userId) || null;
@@ -766,6 +797,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         saveTelegramSettings(merged);
         dispatch({ type: 'SET_TELEGRAM_SETTINGS', payload: merged });
       }
+      if (status.connected && state.user?.id === userId) {
+        const snapshot = buildSnapshot();
+        if (snapshot) {
+          syncAppSnapshot(snapshot).catch(() => undefined);
+          syncTelegramSnapshot(snapshot).catch(() => undefined);
+        }
+      }
       for (const taskId of status.doneTaskIds || []) {
         const task = getCollection<DailyTask>('daily_tasks').find((t) => t.id === taskId && t.status !== 'done');
         if (task) updateTask(taskId, { status: 'done' });
@@ -809,20 +847,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function syncBackendNow() {
-    if (!state.user) return;
-    const snapshot = {
-      userId: state.user.id,
-      name: state.user.name,
-      email: state.user.email,
-      profile: state.profile,
-      projects: state.projects,
-      interactions: state.interactions,
-      settings: state.telegramSettings,
-      tasks: state.dailyTasks,
-      leads: state.leads,
-      messages: state.messages,
-      contentReminders: state.contentReminders,
-    };
+    const snapshot = buildSnapshot();
+    if (!snapshot) return;
     const result = await syncAppSnapshot(snapshot);
     dispatch({
       type: 'SET_DATABASE_STATUS',

@@ -50,6 +50,16 @@ async function ensureDatabase() {
 async function saveUserSnapshot(user) {
   if (!sql) return null;
   await ensureDatabase();
+  const existingRows = await sql`select data from app_snapshots where user_id = ${user.userId} limit 1`;
+  const existing = existingRows[0]?.data || null;
+  if (existing?.telegram?.chatId && !user.telegram?.chatId) {
+    user.telegram = existing.telegram;
+  }
+  user.sent = { ...(existing?.sent || {}), ...(user.sent || {}) };
+  user.commandDoneTaskIds = Array.from(new Set([
+    ...((existing?.commandDoneTaskIds || [])),
+    ...((user.commandDoneTaskIds || [])),
+  ]));
   const rows = await sql`
     insert into app_snapshots (user_id, data, updated_at)
     values (${user.userId}, ${JSON.stringify(user)}, now())
