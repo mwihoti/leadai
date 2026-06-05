@@ -428,10 +428,9 @@ function pipelineLeads(user) {
     const inStage = active.filter((l) => l.status === status).sort((a, b) => (b.score || 0) - (a.score || 0));
     if (inStage.length === 0) continue;
     parts.push(`\n${statusLabel(status)} (${inStage.length}):`);
-    for (const l of inStage.slice(0, 4)) {
+    for (const l of inStage) {
       parts.push(`  ${l.score || '?'}/100 ${leadLabel(l)}${l.followUpDate ? ` 📅${l.followUpDate}` : ''}`);
     }
-    if (inStage.length > 4) parts.push(`  ... +${inStage.length - 4} more`);
   }
 
   return parts.join('\n');
