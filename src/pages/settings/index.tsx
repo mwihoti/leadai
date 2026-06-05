@@ -113,7 +113,10 @@ export default function SettingsPage() {
   async function handleAutofillProfile() {
     setProfileStatus('');
     const updates = await autofillProfileFromCV(form.cvText);
-    if (!updates) return;
+    if (!updates) {
+      setProfileStatus('Autofill failed — check for errors above.');
+      return;
+    }
 
     setForm((prev) => ({
       ...prev,
@@ -190,6 +193,15 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-gray-500 mt-1">Configure your profile and preferences</p>
       </div>
+
+      {state.error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between">
+          <span className="text-sm text-red-700">{state.error}</span>
+          <button onClick={() => dispatch({ type: 'SET_ERROR', payload: null })} className="text-red-500 hover:text-red-700 text-sm shrink-0 ml-4">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Profile */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
