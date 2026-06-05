@@ -4,6 +4,7 @@ const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
 const HIGH_SCORE_DEFAULT = 75;
+export const API_VERSION = 'telegram-link-v2-json-sanitize';
 
 export function databaseConfigured() {
   return Boolean(sql);
@@ -42,24 +43,42 @@ export async function loadAllSnapshots() {
 export async function saveUserSnapshot(user) {
   if (!sql) return null;
   await ensureDatabase();
+  const cleanUser = sanitizeForJsonb(user);
   const existingRows = await sql`select data from app_snapshots where user_id = ${user.userId} limit 1`;
   const existing = existingRows[0]?.data || null;
-  if (existing?.telegram?.chatId && !user.telegram?.chatId) {
-    user.telegram = existing.telegram;
+  if (existing?.telegram?.chatId && !cleanUser.telegram?.chatId) {
+    cleanUser.telegram = existing.telegram;
   }
-  user.sent = { ...(existing?.sent || {}), ...(user.sent || {}) };
-  user.commandDoneTaskIds = Array.from(new Set([
+  cleanUser.sent = { ...(existing?.sent || {}), ...(cleanUser.sent || {}) };
+  cleanUser.commandDoneTaskIds = Array.from(new Set([
     ...((existing?.commandDoneTaskIds || [])),
-    ...((user.commandDoneTaskIds || [])),
+    ...((cleanUser.commandDoneTaskIds || [])),
   ]));
   const rows = await sql`
     insert into app_snapshots (user_id, data, updated_at)
-    values (${user.userId}, ${JSON.stringify(user)}, now())
+    values (${cleanUser.userId}, ${JSON.stringify(cleanUser)}, now())
     on conflict (user_id)
     do update set data = excluded.data, updated_at = now()
     returning updated_at
   `;
   return rows[0]?.updated_at || null;
+}
+
+function sanitizeForJsonb(value) {
+  if (typeof value === 'string') {
+    return value.replace(/\u0000/g, '');
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeForJsonb);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, sanitizeForJsonb(item)])
+    );
+  }
+  return value;
 }
 
 export function defaultSettings() {
@@ -503,6 +522,6 @@ export async function handleTelegramCommand(update) {
       await sendTelegram(user, err.message);
     }
   } else {
-    await sendTelegram(user, 'Commands: /today, /leads, /followups, /post x topic, /done task_id');
+    await sendTelegram(user, 'Commands: /link CODE, /today, /leads, /followups, /post x topic, /done task_id');
   }
 }

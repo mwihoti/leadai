@@ -46,6 +46,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
   const data = await response.json();
   if (!response.ok || data.ok === false) {
+    if (typeof data.error === 'string' && data.error.includes('unsupported Unicode escape sequence')) {
+      throw new Error('Database sync failed because stored text contains a null Unicode character. Redeploy the latest backend sanitizer, then click Sync Now again.');
+    }
     throw new Error(data.error || 'Telegram backend request failed.');
   }
   return data as T;

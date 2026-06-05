@@ -365,7 +365,7 @@ export default function SettingsPage() {
           {!state.telegramConnection.botConfigured && (
             <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-3">
               <p className="text-sm text-yellow-800">
-                Start the Telegram backend with <code className="bg-yellow-100 px-1 rounded">npm run server</code> and set <code className="bg-yellow-100 px-1 rounded">TELEGRAM_BOT_TOKEN</code>.
+                Telegram is not configured on the backend. On Vercel, set <code className="bg-yellow-100 px-1 rounded">TELEGRAM_BOT_TOKEN</code> in Production environment variables and redeploy. Locally, run <code className="bg-yellow-100 px-1 rounded">npm run server</code>.
               </p>
             </div>
           )}

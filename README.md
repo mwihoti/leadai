@@ -208,6 +208,28 @@ If Telegram replies that it connected but the app still shows `Connect Telegram`
 3. Send it to the Telegram bot.
 4. Click `I sent the command` or Refresh Status in Settings.
 
+If `/link CODE` returns the generic command list and does not mention the link code, the deployed webhook is still running an older version. Redeploy to Vercel and verify:
+
+```text
+https://leadai-self.vercel.app/api/health
+```
+
+The response should include:
+
+```json
+{
+  "apiVersion": "telegram-link-v2-json-sanitize"
+}
+```
+
+Then reset the Telegram webhook:
+
+```bash
+curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://leadai-self.vercel.app/api/telegram/webhook"
+```
+
+If Settings shows `unsupported Unicode escape sequence`, redeploy the latest backend sanitizer and click Sync Now again. This error is caused by null Unicode characters in pasted/PDF text that Neon JSONB rejects.
+
 For the deployed Vercel app, set the Telegram webhook to the production URL:
 
 ```bash
