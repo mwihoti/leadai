@@ -20,6 +20,10 @@ function getProviderName(): string {
   return (import.meta.env.VITE_AI_PROVIDER || 'anthropic').toLowerCase();
 }
 
+function getFallbackEnabled(): boolean {
+  return (import.meta.env.VITE_ENABLE_GROQ_FALLBACK || 'true').toLowerCase() !== 'false';
+}
+
 function getProvider(name = getProviderName()) {
   switch (name) {
     case 'anthropic':
@@ -47,15 +51,16 @@ export async function generateAIResponse(options: AIResponseOptions): Promise<st
   try {
     return await provider.generateResponse(options);
   } catch (primaryError: any) {
-    if (providerName === 'groq') {
+    if (providerName === 'groq' || !getFallbackEnabled()) {
       throw primaryError;
     }
 
     try {
       return await new GroqProvider().generateResponse(options);
     } catch (fallbackError: any) {
+      const primaryLabel = providerName === 'anthropic' || providerName === 'claude' ? 'Claude primary' : `${providerName} primary`;
       throw new Error(
-        `${primaryError?.message || 'Primary AI provider failed'} Groq fallback also failed: ${
+        `${primaryLabel} failed: ${primaryError?.message || 'Unknown primary error'} Groq fallback also failed: ${
           fallbackError?.message || 'Unknown Groq error'
         }`
       );

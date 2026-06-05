@@ -1,8 +1,10 @@
 import type {
   ContentReminder,
   DailyTask,
+  Interaction,
   Lead,
   Message,
+  Project,
   TelegramConnection,
   TelegramReminderSettings,
   UserProfile,
@@ -77,6 +79,8 @@ export async function syncTelegramSnapshot(input: {
   name: string;
   email: string;
   profile: UserProfile | null;
+  projects: Project[];
+  interactions: Interaction[];
   settings: TelegramReminderSettings;
   tasks: DailyTask[];
   leads: Lead[];
@@ -87,6 +91,48 @@ export async function syncTelegramSnapshot(input: {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+export async function syncAppSnapshot(input: {
+  userId: string;
+  name: string;
+  email: string;
+  profile: UserProfile | null;
+  projects: Project[];
+  interactions: Interaction[];
+  settings: TelegramReminderSettings;
+  tasks: DailyTask[];
+  leads: Lead[];
+  messages: Message[];
+  contentReminders: ContentReminder[];
+}): Promise<{ databaseConfigured: boolean; updatedAt?: string }> {
+  return request('/app/state', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getBackendHealth(): Promise<{
+  botConfigured: boolean;
+  databaseConfigured: boolean;
+}> {
+  return request('/health');
+}
+
+export async function loadAppSnapshot(userId: string): Promise<{
+  databaseConfigured: boolean;
+  user: {
+    profile?: UserProfile | null;
+    projects?: Project[];
+    leads?: Lead[];
+    messages?: Message[];
+    interactions?: Interaction[];
+    tasks?: DailyTask[];
+    contentReminders?: ContentReminder[];
+    settings?: TelegramReminderSettings;
+  } | null;
+}> {
+  return request(`/app/state?userId=${encodeURIComponent(userId)}`);
 }
 
 export async function sendTelegramTest(userId: string): Promise<void> {

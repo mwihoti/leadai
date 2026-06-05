@@ -4,17 +4,20 @@
 
 import { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { Save, User, Settings2, Target, Download, Sparkles, Upload, FileText, Send, RefreshCw, Bell } from 'lucide-react';
+import { Save, User, Settings2, Target, Download, Sparkles, Upload, FileText, Send, RefreshCw, Bell, Wand2, Database } from 'lucide-react';
 import { extractTextFromPDF } from '../../lib/pdf';
 
 export default function SettingsPage() {
   const {
     state,
     saveProfile,
+    autofillProfileFromCV,
     exportLeadsCSV,
     updateTelegramSettings,
     refreshTelegramStatus,
     sendTelegramTestMessage,
+    refreshBackendStatus,
+    syncBackendNow,
   } = useApp();
   const profile = state.profile;
   const provider = (import.meta.env.VITE_AI_PROVIDER || 'anthropic').toLowerCase();
@@ -25,7 +28,7 @@ export default function SettingsPage() {
       ? 'Google Gemini'
       : provider === 'groq'
       ? 'Groq (Llama)'
-      : 'Anthropic Claude';
+      : provider;
 
   const [form, setForm] = useState({
     fullName: '',
@@ -39,7 +42,9 @@ export default function SettingsPage() {
   });
   const [pdfStatus, setPdfStatus] = useState('');
   const [pdfError, setPdfError] = useState('');
+  const [profileStatus, setProfileStatus] = useState('');
   const [telegramMessage, setTelegramMessage] = useState('');
+  const [databaseMessage, setDatabaseMessage] = useState('');
 
   useEffect(() => {
     if (profile) {
@@ -105,6 +110,24 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleAutofillProfile() {
+    setProfileStatus('');
+    const updates = await autofillProfileFromCV(form.cvText);
+    if (!updates) return;
+
+    setForm((prev) => ({
+      ...prev,
+      fullName: updates.fullName || prev.fullName,
+      headline: updates.headline || prev.headline,
+      skills: updates.skills?.join(', ') || prev.skills,
+      portfolioSummary: updates.portfolioSummary || prev.portfolioSummary,
+      targetRoles: updates.targetRoles?.join(', ') || prev.targetRoles,
+      targetMarkets: updates.targetMarkets?.join(', ') || prev.targetMarkets,
+      cvText: updates.cvText || prev.cvText,
+    }));
+    setProfileStatus('Profile fields filled from CV. Review them, then save your profile.');
+  }
+
   function handleTelegramToggle(field: keyof typeof state.telegramSettings, checked: boolean) {
     updateTelegramSettings({ ...state.telegramSettings, [field]: checked });
   }
@@ -118,6 +141,7 @@ export default function SettingsPage() {
 
   async function handleRefreshTelegram() {
     setTelegramMessage('');
+    await refreshBackendStatus();
     await refreshTelegramStatus();
     setTelegramMessage('Telegram status refreshed.');
   }
@@ -129,6 +153,16 @@ export default function SettingsPage() {
       setTelegramMessage('Test reminder sent to Telegram.');
     } catch (err: any) {
       setTelegramMessage(err.message || 'Unable to send test reminder.');
+    }
+  }
+
+  async function handleSyncNow() {
+    try {
+      setDatabaseMessage('');
+      await syncBackendNow();
+      setDatabaseMessage('Snapshot synced to the backend.');
+    } catch (err: any) {
+      setDatabaseMessage(err.message || 'Database sync failed.');
     }
   }
 
@@ -230,6 +264,18 @@ export default function SettingsPage() {
             <p className="text-xs text-gray-400 mt-1">
               Include your summary, skills, experience, projects, education, links, and any measurable results.
             </p>
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleAutofillProfile}
+                disabled={!form.cvText.trim() || state.aiLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >
+                <Wand2 className="w-4 h-4" />
+                {state.aiLoading ? 'Reading CV...' : 'Autofill Profile from CV'}
+              </button>
+              {profileStatus && <span className="text-xs text-green-700">{profileStatus}</span>}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -412,26 +458,73 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* Database */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Database className="w-5 h-5 text-green-600" />
+            <h2 className="font-semibold text-gray-900">Database Sync</h2>
+          </div>
+          <span className={`text-xs px-2 py-1 rounded-full border ${
+            state.databaseStatus.configured
+              ? 'bg-green-50 text-green-700 border-green-200'
+              : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+          }`}>
+            {state.databaseStatus.configured ? 'Neon configured' : 'Local fallback'}
+          </span>
+        </div>
+        <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 space-y-2">
+          <p className="text-sm text-gray-700">
+            The frontend syncs a user snapshot to the backend, and the backend writes it to Neon when <code className="bg-white px-1 rounded">DATABASE_URL</code> is set.
+          </p>
+          <p className="text-xs text-gray-500">
+            Table: <code className="bg-white px-1 rounded">app_snapshots</code>. One row per user, with CRM data stored in <code className="bg-white px-1 rounded">data</code> JSONB.
+          </p>
+          {state.databaseStatus.lastSyncedAt && (
+            <p className="text-xs text-green-700">Last snapshot sync: {new Date(state.databaseStatus.lastSyncedAt).toLocaleString()}</p>
+          )}
+          {state.databaseStatus.error && (
+            <p className="text-xs text-yellow-700">{state.databaseStatus.error}</p>
+          )}
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            onClick={handleSyncNow}
+            className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700"
+          >
+            <Database className="w-3.5 h-3.5" />
+            Sync Now
+          </button>
+          <button
+            onClick={refreshBackendStatus}
+            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 hover:bg-gray-50"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Refresh Status
+          </button>
+        </div>
+        {databaseMessage && <p className="text-xs text-gray-500 mt-2">{databaseMessage}</p>}
+      </div>
+
       {/* AI Provider Info */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-4">
           <Sparkles className="w-5 h-5 text-purple-600" />
-          <h2 className="font-semibold text-gray-900">AI Provider</h2>
+          <h2 className="font-semibold text-gray-900">Powered by Claude</h2>
         </div>
         <p className="text-sm text-gray-600 mb-2">
-          Your AI provider is determined by the <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">VITE_AI_PROVIDER</code> environment variable.
+          Lead analysis, CV Coach, and profile extraction are designed around Claude. Groq is available only as a fallback if Claude is unavailable.
         </p>
         <div className="bg-gray-50 border border-gray-100 rounded-lg p-3">
           <p className="text-sm">
-            <span className="font-medium">Current provider:</span>{' '}
-            {providerLabel}
+            <span className="font-medium">Primary provider:</span> {providerLabel}
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Primary: {providerLabel}. Fallback: Groq when <code className="bg-gray-100 px-1">VITE_GROQ_API_KEY</code> is configured.
+            Groq fallback: {import.meta.env.VITE_ENABLE_GROQ_FALLBACK === 'false' ? 'disabled' : 'enabled'} when <code className="bg-gray-100 px-1">VITE_GROQ_API_KEY</code> is configured.
           </p>
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          Set <code className="bg-gray-100 px-1">VITE_AI_PROVIDER=anthropic</code>. Groq is used as fallback when configured.
+          Set <code className="bg-gray-100 px-1">VITE_AI_PROVIDER=anthropic</code>. Set <code className="bg-gray-100 px-1">VITE_ENABLE_GROQ_FALLBACK=false</code> to stop fallback calls.
         </p>
       </div>
 

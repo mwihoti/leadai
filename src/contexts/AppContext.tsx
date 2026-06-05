@@ -40,8 +40,11 @@ import {
   DEFAULT_TELEGRAM_SETTINGS,
   getTelegramSettings,
   getTelegramStatus,
+  getBackendHealth,
+  loadAppSnapshot,
   saveTelegramSettings,
   sendTelegramTest,
+  syncAppSnapshot,
   syncTelegramSnapshot,
 } from '../lib/telegram';
 import {
@@ -67,6 +70,11 @@ interface AppState {
   contentReminders: ContentReminder[];
   telegramSettings: TelegramReminderSettings;
   telegramConnection: TelegramConnection;
+  databaseStatus: {
+    configured: boolean;
+    lastSyncedAt: string;
+    error: string;
+  };
   isLoading: boolean;
   aiLoading: boolean;
   error: string | null;
@@ -85,6 +93,11 @@ const initialState: AppState = {
   telegramConnection: {
     connected: false,
     botConfigured: false,
+  },
+  databaseStatus: {
+    configured: false,
+    lastSyncedAt: '',
+    error: '',
   },
   isLoading: false,
   aiLoading: false,
@@ -298,6 +311,89 @@ function normalizeCVProfileResult(input: any): CVProfileResult {
   };
 }
 
+function cleanCVTextForProfile(text: string): string {
+  return text
+    .replace(/\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/g, (match) => match.replace(/\s+/g, ''))
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function hasLooseTerm(text: string, term: string): boolean {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(escaped.split('').join('\\s*'), 'i').test(text);
+}
+
+function inferProfileFromCV(cvText: string, fallbackName: string): Partial<UserProfile> {
+  const cleaned = cleanCVTextForProfile(cvText);
+  const lines = cleaned.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const nameLine = lines.find((line) => (
+    line.length <= 70
+    && /^[A-Za-z][A-Za-z.'-]+(?:\s+[A-Za-z][A-Za-z.'-]+){1,3}$/.test(line)
+    && !/(developer|engineer|architect|consultant|student|skills|summary|experience|education|email|phone|github|linkedin|portfolio)/i.test(line)
+  ));
+
+  const knownSkills = [
+    'React', 'Next.js', 'React Native', 'Angular', 'Vue.js', 'Ember.js',
+    'Node.js', 'Express', 'JavaScript', 'TypeScript', 'Python', 'Django', 'FastAPI',
+    'Ruby on Rails', 'Rails', 'Active Record', 'GraphQL', 'REST APIs', 'API Development',
+    'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Docker', 'CI/CD', 'GitHub Actions',
+    'AWS', 'Azure', 'GCP', 'Tailwind CSS', 'HTML', 'CSS', 'Testing', 'Jest',
+    'AI', 'LLM', 'AI Agents', 'Machine Learning', 'Solidity', 'Starknet', 'Cairo',
+    'Cardano', 'Rust', 'Rust-bitcoin', 'Blockchain',
+  ];
+
+  const skills = Array.from(new Set(
+    knownSkills.filter((skill) => hasLooseTerm(cleaned, skill))
+  ));
+
+  const roles = new Set<string>();
+  if (/(fullstack|full-stack|front.?end.*back.?end)/i.test(cleaned) || (skills.includes('React') && (skills.includes('Node.js') || skills.includes('Python')))) {
+    roles.add('Full-Stack Developer');
+  }
+  if (/(back.?end|api|server)/i.test(cleaned) || ['Node.js', 'Python', 'Django', 'FastAPI', 'Ruby on Rails', 'Rails'].some((skill) => skills.includes(skill))) {
+    roles.add('Backend Developer');
+  }
+  if (/(front.?end|ui|react|vue|angular)/i.test(cleaned) || ['React', 'Next.js', 'Vue.js', 'Angular'].some((skill) => skills.includes(skill))) {
+    roles.add('Frontend Developer');
+  }
+  if (skills.includes('React Native')) roles.add('Mobile Developer');
+  if (/(ai agent|agentic|llm|machine learning|artificial intelligence)/i.test(cleaned)) roles.add('AI Engineer');
+  if (/(blockchain|starknet|cardano|solidity|web3|rust-bitcoin)/i.test(cleaned)) roles.add('Blockchain Developer');
+  if (roles.size === 0) roles.add('Software Developer');
+
+  const markets = new Set<string>();
+  if (/(web3|blockchain|starknet|cardano|solidity)/i.test(cleaned)) markets.add('Web3');
+  if (/(ai|llm|agent|machine learning)/i.test(cleaned)) markets.add('AI');
+  if (/(fintech|finance|payment|banking|capital|accounting|economics)/i.test(cleaned)) markets.add('FinTech');
+  if (/(climate|energy|sustainability|renewable)/i.test(cleaned)) markets.add('Climate Tech');
+  if (markets.size === 0) markets.add('Software');
+
+  const headline = lines.find((line) => (
+    line.length <= 120
+    && /(developer|engineer|architect|consultant|full.?stack|backend|frontend|software|blockchain|ai)/i.test(line)
+  )) || `${Array.from(roles).slice(0, 2).join(' | ')}${skills.length ? ` | ${skills.slice(0, 3).join(', ')}` : ''}`;
+
+  const summarySource = lines
+    .filter((line) => !/(email|phone|linkedin|github|portfolio)/i.test(line))
+    .slice(0, 8)
+    .join(' ');
+
+  const portfolioSummary = summarySource.length > 80
+    ? summarySource.slice(0, 700)
+    : `CV evidence shows experience with ${skills.slice(0, 10).join(', ') || 'software development'}. Review and refine this summary before applying.`;
+
+  return {
+    cvText: cleaned,
+    fullName: nameLine || fallbackName,
+    headline,
+    skills,
+    portfolioSummary,
+    targetRoles: Array.from(roles),
+    targetMarkets: Array.from(markets),
+  };
+}
+
 // ============================================================
 // Actions
 // ============================================================
@@ -328,6 +424,7 @@ type Action =
   | { type: 'UPDATE_CONTENT_REMINDER'; payload: { id: string; updates: Partial<ContentReminder> } }
   | { type: 'SET_TELEGRAM_SETTINGS'; payload: TelegramReminderSettings }
   | { type: 'SET_TELEGRAM_CONNECTION'; payload: TelegramConnection }
+  | { type: 'SET_DATABASE_STATUS'; payload: Partial<AppState['databaseStatus']> }
   | { type: 'LOAD_ALL_DATA'; payload: { profile: UserProfile | null; projects: Project[]; leads: Lead[]; messages: Message[]; interactions: Interaction[]; tasks: DailyTask[]; contentReminders: ContentReminder[]; telegramSettings: TelegramReminderSettings } };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -402,6 +499,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, telegramSettings: action.payload };
     case 'SET_TELEGRAM_CONNECTION':
       return { ...state, telegramConnection: action.payload };
+    case 'SET_DATABASE_STATUS':
+      return { ...state, databaseStatus: { ...state.databaseStatus, ...action.payload } };
     case 'LOAD_ALL_DATA':
       return {
         ...state,
@@ -431,6 +530,7 @@ interface AppContextType {
   logout: () => void;
   // Profile
   saveProfile: (profile: Partial<UserProfile>) => void;
+  autofillProfileFromCV: (cvText: string) => Promise<Partial<UserProfile> | null>;
   // Projects
   addProject: (project: Omit<Project, 'id' | 'userId' | 'createdAt'>) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
@@ -460,6 +560,8 @@ interface AppContextType {
   updateTelegramSettings: (settings: TelegramReminderSettings) => void;
   refreshTelegramStatus: () => Promise<void>;
   sendTelegramTestMessage: () => Promise<void>;
+  refreshBackendStatus: () => Promise<void>;
+  syncBackendNow: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -470,7 +572,7 @@ const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const telegramSyncTimer = useRef<number | null>(null);
+  const backendSyncTimer = useRef<number | null>(null);
 
   // Load all data from localStorage on mount
   useEffect(() => {
@@ -479,25 +581,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'SET_USER', payload: user });
       loadUserData(user.id);
     }
+    refreshBackendStatus();
   }, []);
 
   useEffect(() => {
     if (!state.user) return;
-    if (telegramSyncTimer.current) {
-      window.clearTimeout(telegramSyncTimer.current);
+    if (backendSyncTimer.current) {
+      window.clearTimeout(backendSyncTimer.current);
     }
-    telegramSyncTimer.current = window.setTimeout(() => {
-      syncTelegramSnapshot({
+    backendSyncTimer.current = window.setTimeout(() => {
+      const snapshot = {
         userId: state.user!.id,
         name: state.user!.name,
         email: state.user!.email,
         profile: state.profile,
+        projects: state.projects,
+        interactions: state.interactions,
         settings: state.telegramSettings,
         tasks: state.dailyTasks,
         leads: state.leads,
         messages: state.messages,
         contentReminders: state.contentReminders,
-      })
+      };
+
+      syncAppSnapshot(snapshot)
+        .then((result) => {
+          dispatch({
+            type: 'SET_DATABASE_STATUS',
+            payload: {
+              configured: result.databaseConfigured,
+              lastSyncedAt: result.updatedAt || new Date().toISOString(),
+              error: result.databaseConfigured ? '' : 'DATABASE_URL is not configured on the backend.',
+            },
+          });
+        })
+        .catch((err: any) => {
+          dispatch({
+            type: 'SET_DATABASE_STATUS',
+            payload: {
+              configured: false,
+              error: err.message || 'Backend database sync failed.',
+            },
+          });
+        });
+
+      syncTelegramSnapshot(snapshot)
         .then((result) => {
           dispatch({
             type: 'SET_TELEGRAM_CONNECTION',
@@ -519,13 +647,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }, 800);
 
     return () => {
-      if (telegramSyncTimer.current) {
-        window.clearTimeout(telegramSyncTimer.current);
+      if (backendSyncTimer.current) {
+        window.clearTimeout(backendSyncTimer.current);
       }
     };
   }, [
     state.user,
     state.profile,
+    state.projects,
+    state.interactions,
     state.telegramSettings,
     state.dailyTasks,
     state.leads,
@@ -543,7 +673,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const contentReminders = queryByUserId<ContentReminder>(getCollection<ContentReminder>('content_reminders'), userId);
     const telegramSettings = getTelegramSettings();
     dispatch({ type: 'LOAD_ALL_DATA', payload: { profile, projects, leads, messages, interactions, tasks, contentReminders, telegramSettings } });
+    loadRemoteUserData(userId);
     refreshTelegramStatusForUser(userId);
+  }
+
+  async function loadRemoteUserData(userId: string) {
+    try {
+      const snapshot = await loadAppSnapshot(userId);
+      const remote = snapshot.user;
+      if (!remote) return;
+
+      const profile = remote.profile || null;
+      const projects = Array.isArray(remote.projects) ? remote.projects : queryByUserId<Project>(getCollection<Project>('projects'), userId);
+      const leads = Array.isArray(remote.leads) ? remote.leads : queryByUserId<Lead>(getCollection<Lead>('leads'), userId);
+      const messages = Array.isArray(remote.messages) ? remote.messages : queryByUserId<Message>(getCollection<Message>('messages'), userId);
+      const interactions = Array.isArray(remote.interactions) ? remote.interactions : queryByUserId<Interaction>(getCollection<Interaction>('interactions'), userId);
+      const tasks = Array.isArray(remote.tasks) ? remote.tasks : queryByUserId<DailyTask>(getCollection<DailyTask>('daily_tasks'), userId);
+      const contentReminders = Array.isArray(remote.contentReminders)
+        ? remote.contentReminders
+        : queryByUserId<ContentReminder>(getCollection<ContentReminder>('content_reminders'), userId);
+      const telegramSettings = remote.settings ? { ...DEFAULT_TELEGRAM_SETTINGS, ...remote.settings } : getTelegramSettings();
+
+      if (profile) {
+        const profiles = getCollection<UserProfile>('profiles');
+        const nextProfiles = profiles.some((p) => p.userId === userId)
+          ? profiles.map((p) => (p.userId === userId ? profile : p))
+          : [...profiles, profile];
+        saveCollection('profiles', nextProfiles);
+      }
+      saveCollection('projects', projects);
+      saveCollection('leads', leads);
+      saveCollection('messages', messages);
+      saveCollection('interactions', interactions);
+      saveCollection('daily_tasks', tasks);
+      saveCollection('content_reminders', contentReminders);
+      saveTelegramSettings(telegramSettings);
+
+      dispatch({ type: 'LOAD_ALL_DATA', payload: { profile, projects, leads, messages, interactions, tasks, contentReminders, telegramSettings } });
+    } catch {
+      // LocalStorage remains the offline fallback when the backend is unavailable.
+    }
   }
 
   // ==========================================================
@@ -612,6 +781,57 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   async function refreshTelegramStatus() {
     if (!state.user) return;
     await refreshTelegramStatusForUser(state.user.id);
+  }
+
+  async function refreshBackendStatus() {
+    try {
+      const health = await getBackendHealth();
+      dispatch({
+        type: 'SET_DATABASE_STATUS',
+        payload: {
+          configured: health.databaseConfigured,
+          error: health.databaseConfigured ? '' : 'DATABASE_URL is not configured on the backend.',
+        },
+      });
+      dispatch({
+        type: 'SET_TELEGRAM_CONNECTION',
+        payload: { ...state.telegramConnection, botConfigured: health.botConfigured },
+      });
+    } catch (err: any) {
+      dispatch({
+        type: 'SET_DATABASE_STATUS',
+        payload: {
+          configured: false,
+          error: err.message || 'Backend is not reachable. Run npm run server.',
+        },
+      });
+    }
+  }
+
+  async function syncBackendNow() {
+    if (!state.user) return;
+    const snapshot = {
+      userId: state.user.id,
+      name: state.user.name,
+      email: state.user.email,
+      profile: state.profile,
+      projects: state.projects,
+      interactions: state.interactions,
+      settings: state.telegramSettings,
+      tasks: state.dailyTasks,
+      leads: state.leads,
+      messages: state.messages,
+      contentReminders: state.contentReminders,
+    };
+    const result = await syncAppSnapshot(snapshot);
+    dispatch({
+      type: 'SET_DATABASE_STATUS',
+      payload: {
+        configured: result.databaseConfigured,
+        lastSyncedAt: result.updatedAt || new Date().toISOString(),
+        error: result.databaseConfigured ? '' : 'DATABASE_URL is not configured on the backend.',
+      },
+    });
   }
 
   async function sendTelegramTestMessage() {
@@ -703,6 +923,99 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  async function autofillProfileFromCV(cvText: string): Promise<Partial<UserProfile> | null> {
+    if (!state.user) return null;
+    if (!cvText.trim()) {
+      dispatch({ type: 'SET_ERROR', payload: 'Add CV text before autofilling profile fields.' });
+      return null;
+    }
+
+    dispatch({ type: 'SET_AI_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
+
+    try {
+      const cleanedCvText = cleanCVTextForProfile(cvText);
+      const inferredProfile = inferProfileFromCV(cleanedCvText, state.user.name);
+      const response = await generateAIResponse({
+        prompt: `Extract a concise user profile from this CV. Use only the CV content. Return JSON only.
+
+CV:
+${cleanedCvText}
+
+Return this JSON object:
+{
+  "full_name": "name if present, or empty string",
+  "headline": "short professional headline",
+  "skills": ["skill"],
+  "portfolio_summary": "2-4 sentence truthful summary of experience/projects",
+  "target_roles": ["role the CV appears suited for"],
+  "target_markets": ["industry, domain, or market inferred from real evidence"]
+}`,
+        systemPrompt: 'You extract structured profile fields from CV text. Do not invent experience, employers, degrees, dates, metrics, or skills.',
+        temperature: 0.2,
+        maxTokens: 2500,
+      });
+
+      let result: CVProfileResult;
+      try {
+        result = normalizeCVProfileResult(parseJsonObjectResponse(response, 'CV profile'));
+      } catch {
+        try {
+          const repaired = await generateAIResponse({
+            prompt: `Convert this failed CV profile extraction into valid JSON only. Use only facts present in the CV and the failed output.
+
+CV:
+${cleanedCvText}
+
+Failed output:
+${response}
+
+Return exactly this JSON object shape:
+{
+  "full_name": "",
+  "headline": "",
+  "skills": [],
+  "portfolio_summary": "",
+  "target_roles": [],
+  "target_markets": []
+}`,
+            systemPrompt: 'You repair malformed extraction output into strict JSON. Do not invent facts.',
+            temperature: 0,
+            maxTokens: 1800,
+          });
+          result = normalizeCVProfileResult(parseJsonObjectResponse(repaired, 'CV profile repair'));
+        } catch {
+          result = {
+            full_name: '',
+            headline: '',
+            skills: [],
+            portfolio_summary: '',
+            target_roles: [],
+            target_markets: [],
+          };
+        }
+      }
+
+      const updates: Partial<UserProfile> = {
+        cvText: cleanedCvText,
+        fullName: result.full_name || inferredProfile.fullName || state.profile?.fullName || state.user.name,
+        headline: result.headline || inferredProfile.headline || state.profile?.headline || '',
+        skills: result.skills.length ? result.skills : inferredProfile.skills || state.profile?.skills || [],
+        portfolioSummary: result.portfolio_summary || inferredProfile.portfolioSummary || state.profile?.portfolioSummary || '',
+        targetRoles: result.target_roles.length ? result.target_roles : inferredProfile.targetRoles || state.profile?.targetRoles || [],
+        targetMarkets: result.target_markets.length ? result.target_markets : inferredProfile.targetMarkets || state.profile?.targetMarkets || [],
+      };
+
+      saveProfile(updates);
+      return updates;
+    } catch (err: any) {
+      dispatch({ type: 'SET_ERROR', payload: err.message || 'Failed to autofill profile from CV' });
+      return null;
+    } finally {
+      dispatch({ type: 'SET_AI_LOADING', payload: false });
+    }
+  }
+
   // ==========================================================
   // Projects
   // ==========================================================
@@ -785,10 +1098,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         maxTokens: 6000,
       });
 
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('Invalid bulk import response format');
-
-      const parsed = JSON.parse(jsonMatch[0]);
+      const parsed = parseJsonObjectResponse(response, 'bulk import');
       const candidates = Array.isArray(parsed.leads) ? parsed.leads : [];
       if (candidates.length === 0) {
         throw new Error('No usable leads found in the pasted text.');
@@ -961,10 +1271,7 @@ Return one JSON object only:
       });
 
       // Parse JSON from response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('Invalid AI response format');
-      
-      const result = normalizeAIAnalysisResult(JSON.parse(jsonMatch[0]));
+      const result = normalizeAIAnalysisResult(parseJsonObjectResponse(response, 'lead analysis'));
 
       // Update lead with AI analysis
       const updates: Partial<Lead> = {
@@ -1123,10 +1430,26 @@ Return one JSON object only, using exactly this shape:
         maxTokens: 7000,
       });
 
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('Invalid CV Coach response format');
+      let parsedCVMatch: any;
+      try {
+        parsedCVMatch = parseJsonObjectResponse(response, 'CV Coach');
+      } catch {
+        const repaired = await generateAIResponse({
+          prompt: `Convert the following CV Coach output into the required JSON object only. Do not add markdown.
 
-      const result = normalizeCVMatchResult(JSON.parse(jsonMatch[0]));
+Required JSON keys:
+match_score, must_have_requirements, nice_to_have_requirements, strong_matching_evidence, missing_or_weak, weak_cv_sections, improvements_before_applying, personalized_outreach_message, email_application, cover_letter, follow_up_message, tailored_cv, truthfulness_notes.
+
+Original output:
+${response}`,
+          systemPrompt: CV_MATCH_SYSTEM_PROMPT,
+          temperature: 0,
+          maxTokens: 4000,
+        });
+        parsedCVMatch = parseJsonObjectResponse(repaired, 'CV Coach repair');
+      }
+
+      const result = normalizeCVMatchResult(parsedCVMatch);
       const updates: Partial<Lead> = {
         cvMatchScore: result.match_score,
         cvMustHaveRequirements: result.must_have_requirements,
@@ -1448,6 +1771,7 @@ Use the user's real profile and project details only. Make the content ready to 
         login,
         logout,
         saveProfile,
+        autofillProfileFromCV,
         addProject,
         updateProject,
         deleteProject,
@@ -1469,6 +1793,8 @@ Use the user's real profile and project details only. Make the content ready to 
         updateTelegramSettings,
         refreshTelegramStatus,
         sendTelegramTestMessage,
+        refreshBackendStatus,
+        syncBackendNow,
       }}
     >
       {children}
