@@ -306,6 +306,23 @@ Telegram reminders include:
 
 `VITE_AI_PROVIDER=anthropic` means Claude is primary.
 
+### Claude Model Split (Sonnet vs Haiku)
+
+Two Claude models are used for different latency/cost tiers:
+
+| Task | Model | Reason |
+|------|-------|--------|
+| **Lead analysis** (`analyzeLead`) | Sonnet (`claude-sonnet-4-5-20250929`) | Deep reasoning for scoring, trust checks, pitch angles, next actions |
+| **CV Coach** (`compareCVWithLead`) | Sonnet | CV-to-role comparison requires careful judgment, no invented experience |
+| **Bulk lead import** (`bulkImportLeads`) | Haiku (`claude-3-5-haiku-20241022`) | Fast extraction and deduplication, cost-efficient for bulk |
+| **Message generation** (`generateMessage`) | Haiku | Short outreach messages, speed over depth |
+| **Post generation** (`generatePost`) | Haiku | Draft generation, cheap and fast |
+| **Profile autofill** (`autofillProfileFromCV`) | Haiku | CV-to-form extraction, lightweight task |
+
+The default model (used when no model is specified) is Sonnet. Every call site explicitly passes the appropriate model so the split is predictable regardless of `VITE_ANTHROPIC_MODEL`.
+
+### Groq Fallback
+
 If Claude fails and `VITE_ENABLE_GROQ_FALLBACK=true`, the app tries Groq. If Groq is rate-limited, you may see a Groq `429` error even though Claude is primary. To stop fallback calls:
 
 ```bash
