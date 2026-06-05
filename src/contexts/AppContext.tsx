@@ -1251,11 +1251,11 @@ Return exactly this JSON object shape:
 
   function buildBulkImportPrompt(rawText: string, profile: UserProfile | null, projects: Project[]): string {
     const projectsText = projects.length > 0
-      ? projects.map((p) => `- ${p.name}: ${p.description} (Tech: ${p.techStack.join(', ')})`).join('\n')
+      ? projects.map((p) => `- ${p.name}: ${p.description} (Tech: ${(p.techStack || []).join(', ')})`).join('\n')
       : 'No projects added yet.';
 
     const profileText = profile
-      ? `Name: ${profile.fullName}\nHeadline: ${profile.headline}\nSkills: ${profile.skills.join(', ')}\nTarget Roles: ${profile.targetRoles.join(', ')}\nTarget Markets: ${profile.targetMarkets.join(', ')}`
+      ? `Name: ${profile.fullName}\nHeadline: ${profile.headline}\nSkills: ${(profile.skills || []).join(', ')}\nTarget Roles: ${(profile.targetRoles || []).join(', ')}\nTarget Markets: ${(profile.targetMarkets || []).join(', ')}`
       : 'Profile not set up yet.';
 
     return `Extract job, freelance, contract, partnership, recruiting, client, investor, or collaboration opportunities from this pasted LinkedIn/search text.
@@ -1416,11 +1416,11 @@ Return one JSON object only:
 
   function buildAnalysisPrompt(lead: Lead, profile: UserProfile | null, projects: Project[]): string {
     const projectsText = projects.length > 0
-      ? projects.map((p) => `- ${p.name}: ${p.description} (Tech: ${p.techStack.join(', ')})`).join('\n')
+      ? projects.map((p) => `- ${p.name}: ${p.description} (Tech: ${(p.techStack || []).join(', ')})`).join('\n')
       : 'No projects added yet.';
     
     const profileText = profile
-      ? `Name: ${profile.fullName}\nHeadline: ${profile.headline}\nSkills: ${profile.skills.join(', ')}\nTarget Roles: ${profile.targetRoles.join(', ')}\nTarget Markets: ${profile.targetMarkets.join(', ')}`
+      ? `Name: ${profile.fullName}\nHeadline: ${profile.headline}\nSkills: ${(profile.skills || []).join(', ')}\nTarget Roles: ${(profile.targetRoles || []).join(', ')}\nTarget Markets: ${(profile.targetMarkets || []).join(', ')}`
       : 'Profile not set up yet.';
 
     return `Lead content:
@@ -1553,7 +1553,7 @@ ${response}`,
     const roleText = compactForPrompt(lead.rawText || lead.aiSummary || '', 2600);
     const cvText = compactForPrompt(profile.cvText || '', 5200);
     const projectsText = projects.length > 0
-      ? projects.slice(0, 4).map((p) => `- ${p.name}: ${p.description}\n  Tech/skills: ${p.techStack.join(', ')}\n  Business value: ${p.businessValue}\n  Link: ${p.link}`).join('\n')
+      ? projects.slice(0, 4).map((p) => `- ${p.name}: ${p.description}\n  Tech/skills: ${(p.techStack || []).join(', ')}\n  Business value: ${p.businessValue}\n  Link: ${p.link}`).join('\n')
       : 'No portfolio projects added.';
 
     return `Fast CV-role comparison. Be strict and truthful. Use only provided CV/profile/project evidence. Keep every field concise.
@@ -1571,9 +1571,9 @@ ${roleText}
 User profile:
 Name: ${profile.fullName}
 Headline: ${profile.headline}
-Skills: ${profile.skills.join(', ')}
-Target roles: ${profile.targetRoles.join(', ')}
-Target markets: ${profile.targetMarkets.join(', ')}
+Skills: ${(profile.skills || []).join(', ')}
+Target roles: ${(profile.targetRoles || []).join(', ')}
+Target markets: ${(profile.targetMarkets || []).join(', ')}
 Portfolio summary: ${profile.portfolioSummary}
 
 Portfolio projects:
@@ -1626,7 +1626,7 @@ Suggested Pitch: ${lead.suggestedPitch}
 Best Project: ${lead.bestProjectToMention}
 Why Project Matches: ${lead.whyProjectMatches}
 
-User Skills: ${state.profile?.skills.join(', ') || 'Full-stack development'}
+User Skills: ${(state.profile?.skills || []).join(', ') || 'Full-stack development'}
 User Portfolio Summary: ${state.profile?.portfolioSummary || ''}
 
 Generate only the message body. Keep it under 200 words.`;
@@ -1698,12 +1698,12 @@ Post Type: ${postType}
 Topic: ${topic}
 Tone: ${tone}
 
-User Skills: ${state.profile?.skills.join(', ') || 'Full-stack development'}
+User Skills: ${(state.profile?.skills || []).join(', ') || 'Full-stack development'}
 User Portfolio Summary: ${state.profile?.portfolioSummary || ''}
 
 ${project ? `Project to mention: ${project.name}
 Project Description: ${project.description}
-Tech Stack: ${project.techStack.join(', ')}
+Tech Stack: ${(project.techStack || []).join(', ')}
 Business Value: ${project.businessValue}` : ''}
 
 Reference link, if the user provided one: ${sourceLink || 'None provided'}

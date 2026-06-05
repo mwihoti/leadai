@@ -51,11 +51,11 @@ export default function SettingsPage() {
       setForm({
         fullName: profile.fullName || '',
         headline: profile.headline || '',
-        skills: profile.skills.join(', ') || '',
+        skills: (profile.skills || []).join(', ') || '',
         portfolioSummary: profile.portfolioSummary || '',
         cvText: profile.cvText || '',
-        targetRoles: profile.targetRoles.join(', ') || '',
-        targetMarkets: profile.targetMarkets.join(', ') || '',
+        targetRoles: (profile.targetRoles || []).join(', ') || '',
+        targetMarkets: (profile.targetMarkets || []).join(', ') || '',
         defaultTone: profile.defaultTone || 'professional',
       });
     } else if (state.user) {

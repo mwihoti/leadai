@@ -59,7 +59,7 @@ export default function ProjectsPage() {
     setForm({
       name: project.name,
       description: project.description,
-      techStack: project.techStack.join(', '),
+      techStack: (project.techStack || []).join(', '),
       businessValue: project.businessValue,
       link: project.link,
     });
