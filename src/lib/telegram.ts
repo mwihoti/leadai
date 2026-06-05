@@ -76,6 +76,7 @@ export async function getTelegramStatus(userId: string): Promise<TelegramConnect
 
 export async function syncTelegramSnapshot(input: {
   userId: string;
+  telegramLinkCode?: string;
   name: string;
   email: string;
   profile: UserProfile | null;
@@ -95,6 +96,7 @@ export async function syncTelegramSnapshot(input: {
 
 export async function syncAppSnapshot(input: {
   userId: string;
+  telegramLinkCode?: string;
   name: string;
   email: string;
   profile: UserProfile | null;

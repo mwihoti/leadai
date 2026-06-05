@@ -31,7 +31,8 @@ Truthfulness rules:
 - Do not invent employers, degrees, dates, skills, metrics, projects, industries, or achievements.
 - If a requirement is not evidenced, mark it as missing or weak.
 - Improve framing, structure, clarity, and targeting, but never fabricate experience.
-- A tailored CV may reorganize and rewrite truthful content, but must not add unsupported claims.
+- Keep the response concise and optimized for speed.
+- A tailored CV field may be compact targeting notes instead of a full rewritten CV. It must not add unsupported claims.
 
 Return valid JSON only.`;
 

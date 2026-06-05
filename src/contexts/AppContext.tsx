@@ -288,7 +288,7 @@ function normalizeCVMatchResult(input: any): CVMatchResult {
     truthfulness_notes: pickArray(source, ['truthfulness_notes', 'truthfulnessNotes', 'notes']),
   };
 
-  if (!result.tailored_cv || !result.personalized_outreach_message || result.must_have_requirements.length === 0) {
+  if (!result.personalized_outreach_message || result.must_have_requirements.length === 0) {
     throw new Error('AI response missed required CV Coach fields. Please retry the comparison.');
   }
 
@@ -317,6 +317,14 @@ function cleanCVTextForProfile(text: string): string {
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function compactForPrompt(text: string, maxLength: number): string {
+  const cleaned = cleanCVTextForProfile(text);
+  if (cleaned.length <= maxLength) return cleaned;
+  const headLength = Math.floor(maxLength * 0.72);
+  const tailLength = maxLength - headLength - 80;
+  return `${cleaned.slice(0, headLength)}\n\n[...middle omitted for faster AI comparison...]\n\n${cleaned.slice(-tailLength)}`;
 }
 
 function hasLooseTerm(text: string, term: string): boolean {
@@ -576,8 +584,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   function buildSnapshot() {
     if (!state.user) return null;
+    const telegramLinkCode = state.user.id.replace(/-/g, '').slice(0, 8).toUpperCase();
     return {
       userId: state.user.id,
+      telegramLinkCode,
       name: state.user.name,
       email: state.user.email,
       profile: state.profile,
@@ -1453,7 +1463,7 @@ Return one JSON object only, using exactly this shape:
         prompt: buildCVMatchPrompt(lead, state.profile, state.projects),
         systemPrompt: CV_MATCH_SYSTEM_PROMPT,
         temperature: 0.25,
-        maxTokens: 7000,
+        maxTokens: 3200,
       });
 
       let parsedCVMatch: any;
@@ -1470,7 +1480,7 @@ Original output:
 ${response}`,
           systemPrompt: CV_MATCH_SYSTEM_PROMPT,
           temperature: 0,
-          maxTokens: 4000,
+          maxTokens: 1800,
         });
         parsedCVMatch = parseJsonObjectResponse(repaired, 'CV Coach repair');
       }
@@ -1518,11 +1528,13 @@ ${response}`,
   }
 
   function buildCVMatchPrompt(lead: Lead, profile: UserProfile, projects: Project[]): string {
+    const roleText = compactForPrompt(lead.rawText || lead.aiSummary || '', 2600);
+    const cvText = compactForPrompt(profile.cvText || '', 5200);
     const projectsText = projects.length > 0
-      ? projects.map((p) => `- ${p.name}: ${p.description}\n  Tech/skills: ${p.techStack.join(', ')}\n  Business value: ${p.businessValue}\n  Link: ${p.link}`).join('\n')
+      ? projects.slice(0, 4).map((p) => `- ${p.name}: ${p.description}\n  Tech/skills: ${p.techStack.join(', ')}\n  Business value: ${p.businessValue}\n  Link: ${p.link}`).join('\n')
       : 'No portfolio projects added.';
 
-    return `Compare this user's CV against this opportunity. Be strict and truthful.
+    return `Fast CV-role comparison. Be strict and truthful. Use only provided CV/profile/project evidence. Keep every field concise.
 
 Opportunity:
 Company: ${lead.company}
@@ -1532,7 +1544,7 @@ Summary: ${lead.aiSummary}
 Pain point: ${lead.painPoint}
 Apply method: ${lead.applyMethod || 'unknown'}
 Original role/post text:
-${lead.rawText}
+${roleText}
 
 User profile:
 Name: ${profile.fullName}
@@ -1545,23 +1557,23 @@ Portfolio summary: ${profile.portfolioSummary}
 Portfolio projects:
 ${projectsText}
 
-CV text:
-${profile.cvText}
+Condensed CV text:
+${cvText}
 
 Return one JSON object only:
 {
   "match_score": 0,
-  "must_have_requirements": ["requirement from role"],
-  "nice_to_have_requirements": ["nice-to-have from role"],
-  "strong_matching_evidence": ["CV/project evidence that directly matches the role"],
-  "missing_or_weak": ["missing or weak requirement evidence"],
-  "weak_cv_sections": ["CV section and why it is weak"],
-  "improvements_before_applying": ["specific truthful CV/application improvement"],
-  "personalized_outreach_message": "short LinkedIn DM based only on true evidence",
-  "email_application": "concise application email based only on true evidence",
-  "cover_letter": "brief role-targeted cover letter based only on true evidence",
+  "must_have_requirements": ["top 3-6 requirements from role"],
+  "nice_to_have_requirements": ["top 0-4 nice-to-have requirements from role"],
+  "strong_matching_evidence": ["top 3-6 CV/project evidence points that directly match"],
+  "missing_or_weak": ["top 0-5 missing or weak requirement evidence"],
+  "weak_cv_sections": ["top 0-4 CV section and why it is weak"],
+  "improvements_before_applying": ["top 3-6 specific truthful CV/application improvements"],
+  "personalized_outreach_message": "short outreach DM based only on true evidence",
+  "email_application": "brief application email based only on true evidence",
+  "cover_letter": "very brief 1-paragraph cover letter based only on true evidence",
   "follow_up_message": "short follow-up message",
-  "tailored_cv": "clean ATS-friendly tailored CV using only the user's real CV/profile/project evidence",
+  "tailored_cv": "concise CV targeting notes only: summary rewrite, skills to emphasize, projects to feature. Do not write a full CV.",
   "truthfulness_notes": ["what was not included because it was not evidenced"]
 }`;
   }

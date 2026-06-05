@@ -79,6 +79,7 @@ export function defaultSettings() {
 export function defaultUser(userId) {
   return {
     userId,
+    telegramLinkCode: linkCodeForUserId(userId),
     profile: {},
     settings: defaultSettings(),
     telegram: {},
@@ -106,6 +107,7 @@ export function mergeSnapshot(existing, body) {
   return {
     ...base,
     userId: body.userId,
+    telegramLinkCode: body.telegramLinkCode || base.telegramLinkCode || linkCodeForUserId(body.userId),
     profile: body.profile || base.profile || {},
     email: body.email || base.email,
     name: body.name || base.name,
@@ -120,6 +122,14 @@ export function mergeSnapshot(existing, body) {
     sent: base.sent || {},
     commandDoneTaskIds: base.commandDoneTaskIds || [],
   };
+}
+
+function normalizeLinkCode(value = '') {
+  return String(value).trim().replace(/^user_/i, '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+}
+
+export function linkCodeForUserId(userId = '') {
+  return normalizeLinkCode(userId).slice(0, 8);
 }
 
 export function sendJson(res, status, body) {
@@ -309,6 +319,17 @@ export async function findUserByChat(chatId) {
   return users.find((user) => String(user.telegram?.chatId) === String(chatId)) || null;
 }
 
+export async function findUserByLinkCode(code) {
+  const normalized = normalizeLinkCode(code);
+  if (!normalized) return null;
+  const users = await loadAllSnapshots();
+  return users.find((user) => (
+    normalizeLinkCode(user.telegramLinkCode) === normalized
+    || normalizeLinkCode(user.userId) === normalized
+    || linkCodeForUserId(user.userId) === normalized
+  )) || null;
+}
+
 function todayISO(now = new Date()) {
   return now.toISOString().slice(0, 10);
 }
@@ -412,14 +433,25 @@ export async function handleTelegramCommand(update) {
   const [commandRaw, ...rest] = text.split(/\s+/);
   const command = commandRaw.split('@')[0].toLowerCase();
 
-  if (command === '/start') {
+  if (command === '/start' || command === '/link' || command === '/connect') {
     const token = rest[0] || '';
-    const userId = token.startsWith('user_') ? token.slice(5) : token;
-    if (!userId) {
-      await telegram('sendMessage', { chat_id: chatId, text: 'Open Linked Lead AI Settings and use the Telegram connection command shown there.' });
+    if (!token) {
+      const existing = await findUserByChat(chatId);
+      if (existing) {
+        await telegram('sendMessage', { chat_id: chatId, text: 'Telegram is already connected to Linked Lead AI. Open the app and refresh status if the button has not changed yet.' });
+        return;
+      }
+      await telegram('sendMessage', { chat_id: chatId, text: 'Open Linked Lead AI Settings and send the /link code shown there.' });
       return;
     }
-    const user = await getUser(userId);
+    const userId = token.startsWith('user_') ? token.slice(5) : token;
+    const user = command === '/start'
+      ? await getUser(userId)
+      : await findUserByLinkCode(token);
+    if (!user) {
+      await telegram('sendMessage', { chat_id: chatId, text: 'Link code not found. Open Linked Lead AI Settings, click Sync Now, then send the /link code again.' });
+      return;
+    }
     user.telegram = {
       chatId,
       username: message.from?.username || '',

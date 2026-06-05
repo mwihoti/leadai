@@ -166,7 +166,20 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleTelegramSyncNow() {
+    try {
+      setTelegramMessage('');
+      await syncBackendNow();
+      await refreshTelegramStatus();
+      setTelegramMessage('Synced app data and refreshed Telegram status.');
+    } catch (err: any) {
+      setTelegramMessage(err.message || 'Unable to sync Telegram connection.');
+    }
+  }
+
   const startCommand = state.user ? `/start user_${state.user.id}` : '';
+  const linkCode = state.user ? state.user.id.replace(/-/g, '').slice(0, 8).toUpperCase() : '';
+  const linkCommand = linkCode ? `/link ${linkCode}` : '';
   const botLink = state.telegramConnection.botUsername && state.user
     ? `https://t.me/${state.telegramConnection.botUsername}?start=user_${state.user.id}`
     : '';
@@ -375,6 +388,18 @@ export default function SettingsPage() {
                 <code className="block bg-white border border-cyan-100 rounded-lg px-3 py-2 text-xs text-cyan-900 break-all">{startCommand}</code>
               </div>
             )}
+            <div className="mt-3 bg-white border border-cyan-100 rounded-lg p-3">
+              <p className="text-xs font-medium text-cyan-900">Manual fallback</p>
+              <p className="text-xs text-cyan-700 mt-1">If the button still says Connect Telegram after using the link, send this command to the bot:</p>
+              <code className="block mt-2 bg-cyan-50 border border-cyan-100 rounded-lg px-3 py-2 text-xs text-cyan-900 break-all">{linkCommand}</code>
+              <button
+                onClick={handleTelegramSyncNow}
+                className="mt-2 flex items-center gap-2 px-3 py-1.5 bg-white border border-cyan-100 rounded-lg text-xs text-cyan-700 hover:bg-cyan-50"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                I sent the command
+              </button>
+            </div>
             <div className="flex items-center gap-2 mt-3">
               <button
                 onClick={handleRefreshTelegram}

@@ -81,6 +81,7 @@ function getUser(userId) {
   if (!state.store.users[userId]) {
     state.store.users[userId] = {
       userId,
+      telegramLinkCode: linkCodeForUserId(userId),
       profile: {},
       settings: defaultSettings(),
       telegram: {},
@@ -93,6 +94,14 @@ function getUser(userId) {
     };
   }
   return state.store.users[userId];
+}
+
+function normalizeLinkCode(value = '') {
+  return String(value).trim().replace(/^user_/i, '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+}
+
+function linkCodeForUserId(userId = '') {
+  return normalizeLinkCode(userId).slice(0, 8);
 }
 
 function defaultSettings() {
@@ -312,6 +321,15 @@ function findUserByChat(chatId) {
   return Object.values(state.store.users).find((user) => String(user.telegram.chatId) === String(chatId));
 }
 
+function findUserByLinkCode(code) {
+  const normalized = normalizeLinkCode(code);
+  return Object.values(state.store.users).find((user) => (
+    normalizeLinkCode(user.telegramLinkCode) === normalized
+    || normalizeLinkCode(user.userId) === normalized
+    || linkCodeForUserId(user.userId) === normalized
+  ));
+}
+
 function todaySummary(user) {
   const today = todayISO();
   const tasks = user.tasks.filter((t) => t.status === 'pending' && t.dueDate <= today);
@@ -411,14 +429,23 @@ async function handleCommand(update) {
   const [commandRaw, ...rest] = text.split(/\s+/);
   const command = commandRaw.split('@')[0].toLowerCase();
 
-  if (command === '/start') {
+  if (command === '/start' || command === '/link' || command === '/connect') {
     const token = rest[0] || '';
-    const userId = token.startsWith('user_') ? token.slice(5) : token;
-    if (!userId) {
-      await telegram('sendMessage', { chat_id: chatId, text: 'Open Linked Lead AI Settings and use the Telegram connection command shown there.' });
+    if (!token) {
+      const existing = findUserByChat(chatId);
+      if (existing) {
+        await telegram('sendMessage', { chat_id: chatId, text: 'Telegram is already connected to Linked Lead AI. Open the app and refresh status if the button has not changed yet.' });
+        return;
+      }
+      await telegram('sendMessage', { chat_id: chatId, text: 'Open Linked Lead AI Settings and send the /link code shown there.' });
       return;
     }
-    const user = getUser(userId);
+    const userId = token.startsWith('user_') ? token.slice(5) : token;
+    const user = command === '/start' ? getUser(userId) : findUserByLinkCode(token);
+    if (!user) {
+      await telegram('sendMessage', { chat_id: chatId, text: 'Link code not found. Open Linked Lead AI Settings, click Sync Now, then send the /link code again.' });
+      return;
+    }
     user.telegram = {
       chatId,
       username: message.from?.username || '',

@@ -11,6 +11,7 @@ Linked Lead AI is a local-first AI CRM for managing opportunities from any sourc
 - Follow-up tracking with date and time reminders.
 - Telegram reminders for tasks, follow-ups, scheduled content, and high-score lead alerts.
 - Telegram bot commands:
+  - `/link CODE`
   - `/today`
   - `/leads`
   - `/followups`
@@ -199,6 +200,13 @@ npm run server
 5. Click Connect Telegram, or send the displayed `/start user_<id>` command to your bot.
 6. Click Refresh Status.
 7. Click Send Test.
+
+If Telegram replies that it connected but the app still shows `Connect Telegram`, use the manual fallback in Settings:
+
+1. Click Sync Now in Database Sync.
+2. Copy the displayed `/link CODE` command.
+3. Send it to the Telegram bot.
+4. Click `I sent the command` or Refresh Status in Settings.
 
 For the deployed Vercel app, set the Telegram webhook to the production URL:
 
